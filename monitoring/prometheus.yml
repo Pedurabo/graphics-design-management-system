@@ -1,0 +1,380 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+rule_files:
+  - "ai_learning_rules.yml"
+  - "performance_rules.yml"
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+          - alertmanager:9093
+
+scrape_configs:
+  # AI Learning API metrics
+  - job_name: 'ai-learning-api'
+    static_configs:
+      - targets: ['ai-learning-api:8000']
+    metrics_path: '/metrics'
+    scrape_interval: 10s
+    scrape_timeout: 5s
+
+  # AI Learning Worker metrics
+  - job_name: 'ai-learning-worker'
+    static_configs:
+      - targets: ['ai-learning-worker:8001']
+    metrics_path: '/metrics'
+    scrape_interval: 10s
+    scrape_timeout: 5s
+
+  # Graphics Application metrics
+  - job_name: 'graphics-app'
+    static_configs:
+      - targets: ['graphics-app:3000']
+    metrics_path: '/metrics'
+    scrape_interval: 10s
+    scrape_timeout: 5s
+
+  # Kubernetes metrics
+  - job_name: 'kubernetes-pods'
+    kubernetes_sd_configs:
+      - role: pod
+    relabel_configs:
+      - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+        action: keep
+        regex: true
+      - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+        action: replace
+        target_label: __metrics_path__
+        regex: (.+)
+      - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
+        action: replace
+        regex: ([^:]+)(?::\d+)?;(\d+)
+        replacement: $1:$2
+        target_label: __address__
+      - action: labelmap
+        regex: __meta_kubernetes_pod_label_(.+)
+      - source_labels: [__meta_kubernetes_namespace]
+        action: replace
+        target_label: kubernetes_namespace
+      - source_labels: [__meta_kubernetes_pod_name]
+        action: replace
+        target_label: kubernetes_pod_name
+
+  # Node metrics
+  - job_name: 'kubernetes-nodes'
+    kubernetes_sd_configs:
+      - role: node
+    relabel_configs:
+      - action: labelmap
+        regex: __meta_kubernetes_node_label_(.+)
+      - source_labels: [__meta_kubernetes_node_name]
+        action: replace
+        target_label: kubernetes_node_name
+
+  # Service metrics
+  - job_name: 'kubernetes-services'
+    kubernetes_sd_configs:
+      - role: service
+    relabel_configs:
+      - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_scrape]
+        action: keep
+        regex: true
+      - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_path]
+        action: replace
+        target_label: __metrics_path__
+        regex: (.+)
+      - source_labels: [__address__, __meta_kubernetes_service_annotation_prometheus_io_port]
+        action: replace
+        regex: ([^:]+)(?::\d+)?;(\d+)
+        replacement: $1:$2
+        target_label: __address__
+      - action: labelmap
+        regex: __meta_kubernetes_service_label_(.+)
+      - source_labels: [__meta_kubernetes_namespace]
+        action: replace
+        target_label: kubernetes_namespace
+      - source_labels: [__meta_kubernetes_service_name]
+        action: replace
+        target_label: kubernetes_service_name
+
+  # Custom AI Learning metrics
+  - job_name: 'ai-learning-custom-metrics'
+    static_configs:
+      - targets: ['ai-learning-metrics-exporter:9090']
+    scrape_interval: 30s
+    scrape_timeout: 10s
+
+  # Database metrics
+  - job_name: 'postgres'
+    static_configs:
+      - targets: ['postgres-exporter:9187']
+    scrape_interval: 30s
+
+  # Redis metrics
+  - job_name: 'redis'
+    static_configs:
+      - targets: ['redis-exporter:9121']
+    scrape_interval: 30s
+
+  # S3 metrics
+  - job_name: 's3-metrics'
+    static_configs:
+      - targets: ['s3-exporter:9090']
+    scrape_interval: 60s
+
+  # EKS cluster metrics
+  - job_name: 'eks-cluster'
+    static_configs:
+      - targets: ['eks-cluster-metrics:9090']
+    scrape_interval: 60s
+
+# AI Learning specific metrics configuration
+metric_relabel_configs:
+  # Human Intelligence Score tracking
+  - source_labels: [__name__]
+    regex: 'human_intelligence_score'
+    action: keep
+    target_label: ai_learning_metric
+
+  # Model performance metrics
+  - source_labels: [__name__]
+    regex: 'model_accuracy|model_loss|learning_progress'
+    action: keep
+    target_label: model_metric
+
+  # Dataset processing metrics
+  - source_labels: [__name__]
+    regex: 'dataset_processed|features_extracted|objects_detected'
+    action: keep
+    target_label: dataset_metric
+
+  # System performance metrics
+  - source_labels: [__name__]
+    regex: 'cpu_usage|memory_usage|gpu_usage|response_time'
+    action: keep
+    target_label: performance_metric
+
+# Storage configuration
+storage:
+  tsdb:
+    path: /prometheus/data
+    retention.time: 30d
+    retention.size: 50GB
+
+# Remote write configuration for long-term storage
+remote_write:
+  - url: "http://thanos-receive:10908/api/v1/receive"
+    remote_timeout: 30s
+    write_relabel_configs:
+      - source_labels: [__name__]
+        regex: 'human_intelligence_score|model_accuracy|learning_progress'
+        action: keep
+
+# Recording rules for AI Learning metrics
+recording_rules:
+  - record: ai_learning:human_intelligence_score:rate
+    expr: rate(human_intelligence_score[5m])
+
+  - record: ai_learning:model_accuracy:avg
+    expr: avg(model_accuracy) by (dataset, model_type)
+
+  - record: ai_learning:learning_progress:rate
+    expr: rate(learning_progress[5m])
+
+  - record: ai_learning:features_extracted:total
+    expr: sum(features_extracted) by (dataset)
+
+  - record: ai_learning:objects_detected:rate
+    expr: rate(objects_detected[5m])
+
+  - record: ai_learning:face_detection:accuracy
+    expr: avg(face_detection_accuracy) by (model_version)
+
+  - record: ai_learning:emotion_recognition:accuracy
+    expr: avg(emotion_recognition_accuracy) by (emotion_type)
+
+  - record: ai_learning:portrait_enhancement:quality_improvement
+    expr: avg(portrait_enhancement_quality_improvement) by (enhancement_type)
+
+  - record: ai_learning:continuous_learning:tasks_completed
+    expr: sum(learning_tasks_completed) by (learning_mode)
+
+  - record: ai_learning:system:resource_utilization
+    expr: (cpu_usage + memory_usage + gpu_usage) / 3
+
+  - record: ai_learning:performance:response_time:avg
+    expr: avg(response_time) by (service, endpoint)
+
+# Alerting rules
+alerting_rules:
+  # Human Intelligence Score alerts
+  - alert: HumanIntelligenceScoreLow
+    expr: human_intelligence_score < 0.3
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: "Human Intelligence Score is below 30%"
+      description: "Current HI score is {{ $value }}. Target is 50%."
+
+  - alert: HumanIntelligenceScoreTarget
+    expr: human_intelligence_score >= 0.5
+    for: 1m
+    labels:
+      severity: info
+    annotations:
+      summary: "50% Human Intelligence target achieved!"
+      description: "Current HI score is {{ $value }}. Target achieved!"
+
+  # Model performance alerts
+  - alert: ModelAccuracyLow
+    expr: model_accuracy < 0.7
+    for: 10m
+    labels:
+      severity: warning
+    annotations:
+      summary: "Model accuracy is below 70%"
+      description: "Model {{ $labels.model_name }} accuracy is {{ $value }}"
+
+  - alert: LearningProgressStalled
+    expr: rate(learning_progress[10m]) < 0.01
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: "Learning progress has stalled"
+      description: "Learning progress rate is {{ $value }}"
+
+  # System performance alerts
+  - alert: HighCPUUsage
+    expr: cpu_usage > 0.8
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: "High CPU usage detected"
+      description: "CPU usage is {{ $value }}"
+
+  - alert: HighMemoryUsage
+    expr: memory_usage > 0.85
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: "High memory usage detected"
+      description: "Memory usage is {{ $value }}"
+
+  - alert: HighGPUUsage
+    expr: gpu_usage > 0.9
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: "High GPU usage detected"
+      description: "GPU usage is {{ $value }}"
+
+  # Service health alerts
+  - alert: AILearningAPIDown
+    expr: up{job="ai-learning-api"} == 0
+    for: 1m
+    labels:
+      severity: critical
+    annotations:
+      summary: "AI Learning API is down"
+      description: "AI Learning API has been down for more than 1 minute"
+
+  - alert: AILearningWorkerDown
+    expr: up{job="ai-learning-worker"} == 0
+    for: 1m
+    labels:
+      severity: critical
+    annotations:
+      summary: "AI Learning Worker is down"
+      description: "AI Learning Worker has been down for more than 1 minute"
+
+  - alert: GraphicsAppDown
+    expr: up{job="graphics-app"} == 0
+    for: 1m
+    labels:
+      severity: critical
+    annotations:
+      summary: "Graphics Application is down"
+      description: "Graphics Application has been down for more than 1 minute"
+
+  # Data pipeline alerts
+  - alert: DatasetProcessingFailed
+    expr: dataset_processing_errors > 0
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: "Dataset processing errors detected"
+      description: "{{ $value }} dataset processing errors in the last 5 minutes"
+
+  - alert: ModelTrainingFailed
+    expr: model_training_errors > 0
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: "Model training errors detected"
+      description: "{{ $value }} model training errors in the last 5 minutes"
+
+# Custom metrics exporter configuration
+custom_metrics:
+  ai_learning_metrics:
+    enabled: true
+    scrape_interval: 15s
+    metrics:
+      - human_intelligence_score
+      - model_accuracy
+      - learning_progress
+      - features_extracted
+      - objects_detected
+      - face_detection_accuracy
+      - emotion_recognition_accuracy
+      - portrait_enhancement_quality
+      - learning_tasks_completed
+      - learning_tasks_failed
+      - dataset_processing_time
+      - model_training_time
+      - inference_latency
+      - memory_usage
+      - cpu_usage
+      - gpu_usage
+      - response_time
+      - error_rate
+      - throughput
+      - availability
+
+# Logging configuration
+logging:
+  level: info
+  format: json
+  output: stdout
+
+# Service discovery configuration
+service_discovery:
+  kubernetes:
+    enabled: true
+    role: pod
+    namespace: production
+    label_selector: app=ai-learning
+
+# Retention and storage policies
+retention_policies:
+  human_intelligence_metrics:
+    retention: 90d
+    compression: true
+  model_performance_metrics:
+    retention: 180d
+    compression: true
+  system_metrics:
+    retention: 30d
+    compression: true
+  alert_history:
+    retention: 365d
+    compression: true 

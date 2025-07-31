@@ -1,0 +1,152 @@
+# AI Cluster Team - Machine Learning and Computer Vision Services
+# Focus: AI-powered graphics processing, medical design, continuous learning
+
+# Core AI/ML Libraries
+tensorflow==2.13.0
+torch==2.0.1
+torchvision==0.15.2
+scikit-learn==1.3.0
+numpy==1.24.3
+pandas==2.0.3
+matplotlib==3.7.2
+seaborn==0.12.2
+plotly==5.15.0
+
+# Computer Vision
+opencv-python==4.8.0.76
+pillow==10.0.0
+imageio==2.31.1
+scikit-image==0.21.0
+medpy==0.4.0
+simpleitk==2.2.1
+pydicom==2.4.3
+nibabel==5.1.0
+monai==1.2.0
+
+# Natural Language Processing
+transformers==4.30.2
+tokenizers==0.13.3
+nltk==3.8.1
+spacy==3.6.0
+textblob==0.17.1
+gensim==4.3.1
+
+# Deep Learning Frameworks
+keras==2.13.1
+fastai==2.7.12
+jax==0.4.13
+jaxlib==0.4.13
+flax==0.7.5
+
+# Model Deployment
+mlflow==2.6.0
+bentoml==1.0.20
+tritonclient==2.34.0
+onnx==1.14.0
+onnxruntime==1.15.1
+
+# API Framework
+fastapi==0.100.0
+uvicorn==0.23.2
+pydantic==2.0.2
+python-multipart==0.0.6
+python-jose==3.3.0
+passlib==1.7.4
+
+# Database and Caching
+sqlalchemy==2.0.19
+alembic==1.11.1
+redis==4.6.0
+pymongo==4.4.0
+elasticsearch==8.9.0
+
+# Data Processing
+dask==2023.7.0
+vaex==4.15.0
+modin==0.20.0
+ray==2.6.3
+apache-beam==2.46.0
+
+# Scientific Computing
+scipy==1.11.1
+statsmodels==0.14.0
+xgboost==1.7.6
+lightgbm==4.0.0
+
+# Medical AI Specific
+med7==1.0.0
+radiopaedia==0.1.0
+pymed==0.0.1
+biopython==1.81
+
+# Rice MSC Dataset Processing
+scikit-learn-intelex==2023.1.1
+category-encoders==2.6.1
+imbalanced-learn==0.11.0
+
+# Human Faces Dataset Processing
+face-recognition==1.3.0
+dlib==19.24.2
+mediapipe==0.10.0
+insightface==0.7.3
+
+# NLP Med Dialogue Processing
+sentence-transformers==2.2.2
+spacy-transformers==1.3.0
+allennlp==2.10.1
+spacy==3.6.0
+
+# Model Evaluation and Monitoring
+wandb==0.15.8
+tensorboard==2.13.0
+evidently==0.2.0
+great-expectations==0.17.20
+
+# Testing and Quality Assurance
+pytest==7.4.0
+pytest-cov==4.1.0
+pytest-asyncio==0.21.1
+pytest-mock==3.11.1
+hypothesis==6.82.0
+
+# Code Quality
+black==23.7.0
+isort==5.12.0
+flake8==6.0.0
+mypy==1.5.1
+bandit==1.7.5
+safety==2.3.5
+
+# Development Tools
+jupyter==1.0.0
+jupyterlab==4.0.2
+ipython==8.14.0
+notebook==7.0.0
+voila==0.4.0
+
+# Visualization
+streamlit==1.25.0
+gradio==3.35.2
+dash==2.11.1
+bokeh==3.2.2
+altair==5.1.2
+
+# Utilities
+python-dotenv==1.0.0
+click==8.1.7
+rich==13.4.2
+tqdm==4.65.0
+loguru==0.7.0
+
+# Team Configuration
+# AI Cluster Team - Machine Learning Specialists
+# Lead: ML Engineer
+# Focus: AI-powered graphics processing, medical design automation
+# Sprint Duration: 3 weeks
+# Daily Standup: 10:00 AM
+# Responsibilities:
+# - AI model development and training
+# - Computer vision implementation
+# - Medical design automation
+# - Continuous learning systems
+# - Model optimization and deployment 

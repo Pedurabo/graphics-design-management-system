@@ -1,0 +1,505 @@
+name: Continuous Integration & Deployment Pipeline
+
+on:
+  push:
+    branches: [ main, develop, feature/* ]
+  pull_request:
+    branches: [ main, develop ]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Deployment Environment'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+        - development
+        - staging
+        - production
+      security_scan:
+        description: 'Run Security Scans'
+        required: true
+        default: true
+        type: boolean
+
+env:
+  NODE_VERSION: '18'
+  PYTHON_VERSION: '3.11'
+  DOCKER_REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+  AWS_REGION: us-east-1
+
+jobs:
+  # Security Scanning (Parallel)
+  security-scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          severity: 'CRITICAL,HIGH'
+
+      - name: Run Snyk security scan
+        uses: snyk/actions/node@master
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        with:
+          args: --severity-threshold=high --fail-on=high
+
+      - name: Run Bandit security scan (Python)
+        run: |
+          pip install bandit
+          bandit -r ./ai-services -f json -o bandit-report.json
+          bandit -r ./ai-services -f txt -o bandit-report.txt
+
+      - name: Run Gitleaks for secrets detection
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Run Checkov for infrastructure security
+        uses: bridgecrewio/checkov-action@master
+        with:
+          directory: ./infrastructure
+          framework: terraform
+          output_format: sarif
+          output_file_path: checkov-results.sarif
+
+      - name: Upload security scan results
+        uses: github/codeql-action/upload-sarif@v2
+        with:
+          sarif_file: trivy-results.sarif
+
+  # Code Quality & Linting
+  code-quality:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: |
+          npm ci
+          cd frontend && npm ci
+          cd ../backend && npm ci
+          cd ../ai-services && pip install -r requirements.txt
+
+      - name: Run ESLint (Frontend)
+        run: |
+          cd frontend
+          npm run lint
+          npm run type-check
+
+      - name: Run ESLint (Backend)
+        run: |
+          cd backend
+          npm run lint
+          npm run type-check
+
+      - name: Run Python linting
+        run: |
+          cd ai-services
+          pip install flake8 black isort mypy
+          flake8 . --max-line-length=100 --count --statistics
+          black --check --diff .
+          isort --check-only --diff .
+          mypy . --ignore-missing-imports
+
+      - name: Run SonarQube analysis
+        uses: sonarqube-quality-gate-action@master
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        with:
+          scannerHomebrew: SonarScanner
+
+  # Testing (Parallel)
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: password
+          POSTGRES_DB: test_db
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+      redis:
+        image: redis:7-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+
+    strategy:
+      matrix:
+        test-suite: [unit, integration, e2e, performance]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: |
+          npm ci
+          cd frontend && npm ci
+          cd ../backend && npm ci
+          cd ../ai-services && pip install -r requirements.txt
+
+      - name: Run Unit Tests
+        if: matrix.test-suite == 'unit'
+        run: |
+          cd frontend && npm run test:unit -- --coverage --watchAll=false
+          cd ../backend && npm run test:unit -- --coverage
+          cd ../ai-services && python -m pytest tests/unit/ --cov=services --cov-report=xml
+
+      - name: Run Integration Tests
+        if: matrix.test-suite == 'integration'
+        run: |
+          cd frontend && npm run test:integration
+          cd ../backend && npm run test:integration
+          cd ../ai-services && python -m pytest tests/integration/ --cov=services
+
+      - name: Run E2E Tests
+        if: matrix.test-suite == 'e2e'
+        run: |
+          cd frontend && npm run test:e2e
+          cd ../backend && npm run test:e2e
+
+      - name: Run Performance Tests
+        if: matrix.test-suite == 'performance'
+        run: |
+          npm install -g artillery
+          artillery run tests/performance/load-test.yml
+
+      - name: Upload coverage reports
+        uses: codecov/codecov-action@v3
+        with:
+          files: ./frontend/coverage/lcov.info,./backend/coverage/lcov.info,./ai-services/coverage.xml
+          flags: ${{ matrix.test-suite }}
+          name: ${{ matrix.test-suite }}-coverage
+
+  # Build & Package
+  build:
+    runs-on: ubuntu-latest
+    needs: [security-scan, code-quality, test]
+    timeout-minutes: 30
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.DOCKER_REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha
+
+      - name: Build and push Frontend image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./frontend
+          push: true
+          tags: ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}/frontend:${{ steps.meta.outputs.version }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          platforms: linux/amd64,linux/arm64
+
+      - name: Build and push Backend image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./backend
+          push: true
+          tags: ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}/backend:${{ steps.meta.outputs.version }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          platforms: linux/amd64,linux/arm64
+
+      - name: Build and push AI Services image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./ai-services
+          push: true
+          tags: ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}/ai-services:${{ steps.meta.outputs.version }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          platforms: linux/amd64,linux/arm64
+
+      - name: Build and push Infrastructure image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./infrastructure
+          push: true
+          tags: ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}/infrastructure:${{ steps.meta.outputs.version }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          platforms: linux/amd64,linux/arm64
+
+  # Infrastructure as Code
+  infrastructure:
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'
+    environment: ${{ github.event.inputs.environment || 'staging' }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.5.0
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Terraform Init
+        run: |
+          cd infrastructure
+          terraform init
+
+      - name: Terraform Format Check
+        run: |
+          cd infrastructure
+          terraform fmt -check
+
+      - name: Terraform Plan
+        run: |
+          cd infrastructure
+          terraform plan -var="environment=${{ github.event.inputs.environment || 'staging' }}" -out=tfplan
+
+      - name: Terraform Apply
+        if: github.ref == 'refs/heads/main'
+        run: |
+          cd infrastructure
+          terraform apply tfplan
+
+  # Deploy to Kubernetes
+  deploy:
+    runs-on: ubuntu-latest
+    needs: [build, infrastructure]
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'
+    environment: ${{ github.event.inputs.environment || 'staging' }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Update kubeconfig
+        run: |
+          aws eks update-kubeconfig --name graphics-app-cluster-${{ github.event.inputs.environment || 'staging' }} --region ${{ env.AWS_REGION }}
+
+      - name: Deploy to Kubernetes
+        run: |
+          # Update image tags in deployment files
+          sed -i 's|IMAGE_TAG|${{ github.sha }}|g' k8s/${{ github.event.inputs.environment || 'staging' }}/*.yaml
+          
+          # Apply Kubernetes manifests
+          kubectl apply -f k8s/${{ github.event.inputs.environment || 'staging' }}/
+          
+          # Wait for deployment
+          kubectl rollout status deployment/frontend -n graphics-app
+          kubectl rollout status deployment/backend -n graphics-app
+          kubectl rollout status deployment/ai-services -n graphics-app
+
+      - name: Run post-deployment tests
+        run: |
+          # Wait for services to be ready
+          sleep 60
+          
+          # Health checks
+          kubectl get pods -n graphics-app
+          kubectl get services -n graphics-app
+          
+          # Test endpoints
+          curl -f http://localhost:3000/health || echo "Frontend health check failed"
+          curl -f http://localhost:8000/health || echo "Backend health check failed"
+          curl -f http://localhost:5000/health || echo "AI service health check failed"
+
+  # Monitoring & Observability
+  monitoring:
+    runs-on: ubuntu-latest
+    needs: deploy
+    if: always()
+    steps:
+      - name: Setup monitoring
+        run: |
+          # Deploy Prometheus
+          kubectl apply -f monitoring/prometheus/
+          
+          # Deploy Grafana
+          kubectl apply -f monitoring/grafana/
+          
+          # Deploy AlertManager
+          kubectl apply -f monitoring/alertmanager/
+
+      - name: Configure monitoring dashboards
+        run: |
+          # Import Grafana dashboards
+          kubectl apply -f monitoring/grafana/dashboards/
+          
+          # Configure Prometheus rules
+          kubectl apply -f monitoring/prometheus/rules/
+
+      - name: Setup logging
+        run: |
+          # Deploy ELK stack
+          kubectl apply -f monitoring/elk/
+          
+          # Configure log aggregation
+          kubectl apply -f monitoring/logging/
+
+  # Security Post-Deployment
+  security-post-deployment:
+    runs-on: ubuntu-latest
+    needs: deploy
+    if: always()
+    steps:
+      - name: Run post-deployment security scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'image'
+          scan-ref: '${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}/frontend:${{ github.sha }}'
+          format: 'sarif'
+          output: 'post-deployment-scan.sarif'
+
+      - name: Run penetration testing
+        run: |
+          # Run automated penetration tests
+          npm install -g zaproxy
+          zap-baseline.py -t http://localhost:3000
+
+      - name: Security compliance check
+        run: |
+          # Run compliance checks
+          kubectl apply -f security/compliance/
+
+  # Notifications
+  notify:
+    runs-on: ubuntu-latest
+    needs: [deploy, monitoring, security-post-deployment]
+    if: always()
+    steps:
+      - name: Send Slack notification
+        uses: 8398a7/action-slack@v3
+        with:
+          status: ${{ job.status }}
+          channel: '#deployments'
+          text: |
+            🚀 Graphics App Deployment
+            Environment: ${{ github.event.inputs.environment || 'staging' }}
+            Branch: ${{ github.ref }}
+            Commit: ${{ github.sha }}
+            Status: ${{ job.status }}
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+      - name: Send email notification
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 587
+          username: ${{ secrets.EMAIL_USERNAME }}
+          password: ${{ secrets.EMAIL_PASSWORD }}
+          subject: "Graphics App Deployment - ${{ github.event.inputs.environment || 'staging' }}"
+          to: ${{ secrets.NOTIFICATION_EMAIL }}
+          from: "CI/CD Pipeline"
+          body: |
+            Deployment completed for Graphics Application
+            
+            Environment: ${{ github.event.inputs.environment || 'staging' }}
+            Branch: ${{ github.ref }}
+            Commit: ${{ github.sha }}
+            Status: ${{ job.status }}
+            
+            View deployment: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+  # Cleanup
+  cleanup:
+    runs-on: ubuntu-latest
+    needs: [deploy, notify]
+    if: always()
+    steps:
+      - name: Cleanup Docker images
+        run: |
+          docker system prune -f
+          docker image prune -f
+
+      - name: Cleanup workspace
+        run: |
+          rm -rf node_modules
+          rm -rf frontend/node_modules
+          rm -rf backend/node_modules
+          rm -rf ai-services/__pycache__
+          rm -rf .pytest_cache 

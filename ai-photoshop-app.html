@@ -1,0 +1,1205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI-Enhanced Photoshop Application</title>
+    <style>
+        :root {
+            --bg-primary: #2d2d2d;
+            --bg-secondary: #3c3c3c;
+            --text-primary: #ffffff;
+            --text-secondary: #cccccc;
+            --border-color: #555555;
+            --accent-color: #007bff;
+            --ai-color: #00ff88;
+            --success-color: #28a745;
+            --warning-color: #ffc107;
+            --danger-color: #dc3545;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            overflow: hidden;
+            height: 100vh;
+        }
+
+        .app-container {
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+        }
+
+        /* Menu Bar */
+        .menu-bar {
+            background: var(--bg-secondary);
+            color: var(--text-primary);
+            padding: 4px 8px;
+            display: flex;
+            align-items: center;
+            font-size: 12px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .menu-item {
+            padding: 4px 8px;
+            cursor: pointer;
+            border-radius: 3px;
+        }
+
+        .menu-item:hover {
+            background: var(--accent-color);
+        }
+
+        .dropdown {
+            position: relative;
+            display: inline-block;
+        }
+
+        .dropdown-content {
+            display: none;
+            position: absolute;
+            background: var(--bg-secondary);
+            min-width: 160px;
+            box-shadow: 0 8px 16px rgba(0,0,0,0.3);
+            z-index: 1000;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+        }
+
+        .dropdown:hover .dropdown-content {
+            display: block;
+        }
+
+        .dropdown-item {
+            color: var(--text-primary);
+            padding: 8px 12px;
+            text-decoration: none;
+            display: block;
+            font-size: 12px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .dropdown-item:hover {
+            background: var(--accent-color);
+        }
+
+        /* Toolbar */
+        .toolbar {
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border-color);
+            padding: 8px 16px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .tool-group {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            padding: 4px 8px;
+            border-right: 1px solid var(--border-color);
+        }
+
+        .tool-group:last-child {
+            border-right: none;
+        }
+
+        .tool-button {
+            background: var(--bg-primary);
+            border: 1px solid var(--border-color);
+            color: var(--text-primary);
+            padding: 6px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            transition: all 0.2s ease;
+        }
+
+        .tool-button:hover {
+            background: var(--accent-color);
+            border-color: var(--accent-color);
+        }
+
+        .tool-button.active {
+            background: var(--accent-color);
+            color: white;
+            border-color: var(--accent-color);
+        }
+
+        .tool-button.ai {
+            background: var(--ai-color);
+            color: #000;
+            border-color: var(--ai-color);
+        }
+
+        .tool-button.ai:hover {
+            background: #00cc6a;
+        }
+
+        /* Main Content */
+        .main-content {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        /* Sidebar */
+        .sidebar {
+            width: 250px;
+            background: var(--bg-secondary);
+            border-right: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+        }
+
+        .sidebar-section {
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .sidebar-header {
+            background: var(--bg-primary);
+            padding: 8px 12px;
+            font-weight: bold;
+            font-size: 12px;
+            color: var(--text-primary);
+            border-bottom: 1px solid var(--border-color);
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .sidebar-header:hover {
+            background: var(--accent-color);
+        }
+
+        .sidebar-content {
+            padding: 8px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+
+        .sidebar-item {
+            padding: 6px 8px;
+            cursor: pointer;
+            border-radius: 4px;
+            font-size: 12px;
+            margin-bottom: 2px;
+            color: var(--text-primary);
+        }
+
+        .sidebar-item:hover {
+            background: var(--accent-color);
+        }
+
+        .sidebar-item.active {
+            background: var(--accent-color);
+            color: white;
+        }
+
+        /* Canvas Area */
+        .canvas-container {
+            flex: 1;
+            background: var(--bg-primary);
+            display: flex;
+            flex-direction: column;
+            position: relative;
+        }
+
+        .canvas-toolbar {
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border-color);
+            padding: 8px 16px;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            font-size: 12px;
+            color: var(--text-primary);
+        }
+
+        .canvas {
+            flex: 1;
+            background: white;
+            margin: 16px;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+            cursor: crosshair;
+        }
+
+        /* Status Bar */
+        .status-bar {
+            background: var(--bg-secondary);
+            border-top: 1px solid var(--border-color);
+            padding: 4px 16px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 11px;
+            color: var(--text-secondary);
+        }
+
+        /* Form Controls */
+        .form-group {
+            margin-bottom: 12px;
+        }
+
+        .form-label {
+            display: block;
+            margin-bottom: 4px;
+            font-size: 12px;
+            font-weight: bold;
+            color: var(--text-primary);
+        }
+
+        .form-control {
+            width: 100%;
+            padding: 6px 8px;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            font-size: 12px;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+        }
+
+        .btn {
+            padding: 8px 16px;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            margin-bottom: 4px;
+        }
+
+        .btn:hover {
+            background: var(--accent-color);
+            border-color: var(--accent-color);
+        }
+
+        .btn-primary {
+            background: var(--accent-color);
+            color: white;
+            border-color: var(--accent-color);
+        }
+
+        .btn-ai {
+            background: var(--ai-color);
+            color: #000;
+            border-color: var(--ai-color);
+        }
+
+        .btn-ai:hover {
+            background: #00cc6a;
+        }
+
+        /* Sliders */
+        .slider {
+            width: 100%;
+            height: 6px;
+            border-radius: 3px;
+            background: var(--border-color);
+            outline: none;
+            -webkit-appearance: none;
+        }
+
+        .slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: var(--accent-color);
+            cursor: pointer;
+        }
+
+        /* Color Picker */
+        .color-picker {
+            width: 100%;
+            height: 40px;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        /* Notification */
+        .notification {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: var(--success-color);
+            color: white;
+            padding: 12px 20px;
+            border-radius: 4px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+            z-index: 1001;
+            display: none;
+            font-size: 12px;
+        }
+
+        /* AI Progress Bar */
+        .ai-progress {
+            background: var(--bg-primary);
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            padding: 8px;
+            margin: 8px 0;
+            display: none;
+        }
+
+        .ai-progress-bar {
+            width: 0%;
+            height: 20px;
+            background: var(--ai-color);
+            border-radius: 2px;
+            transition: width 0.3s ease;
+        }
+
+        .ai-progress-text {
+            text-align: center;
+            margin-top: 4px;
+            font-size: 11px;
+            color: var(--text-secondary);
+        }
+    </style>
+</head>
+<body>
+    <div class="app-container">
+        <!-- Menu Bar -->
+        <div class="menu-bar">
+            <div class="dropdown">
+                <div class="menu-item">File</div>
+                <div class="dropdown-content">
+                    <div class="dropdown-item" onclick="aiPhotoshopApp.newDocument()">New (Ctrl+N)</div>
+                    <div class="dropdown-item" onclick="aiPhotoshopApp.openDocument()">Open... (Ctrl+O)</div>
+                    <div class="dropdown-item" onclick="aiPhotoshopApp.saveDocument()">Save (Ctrl+S)</div>
+                    <div class="dropdown-item" onclick="aiPhotoshopApp.exportSegmentation()">Export Segmentation</div>
+                </div>
+            </div>
+            <div class="dropdown">
+                <div class="menu-item">AI Tools</div>
+                <div class="dropdown-content">
+                    <div class="dropdown-item" onclick="aiPhotoshopApp.performSegmentation()">Human Segmentation</div>
+                    <div class="dropdown-item" onclick="aiPhotoshopApp.removeBackground()">Remove Background</div>
+                    <div class="dropdown-item" onclick="aiPhotoshopApp.refineMask()">Refine Mask</div>
+                    <div class="dropdown-item" onclick="aiPhotoshopApp.loadMadsDataset()">Load MADS Dataset</div>
+                </div>
+            </div>
+            <div class="dropdown">
+                <div class="menu-item">Help</div>
+                <div class="dropdown-content">
+                    <div class="dropdown-item" onclick="aiPhotoshopApp.showAbout()">About</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Toolbar -->
+        <div class="toolbar">
+            <div class="tool-group">
+                <button class="tool-button" onclick="aiPhotoshopApp.newDocument()" title="New File (Ctrl+N)">
+                    📄 New
+                </button>
+                <button class="tool-button" onclick="aiPhotoshopApp.openDocument()" title="Open File (Ctrl+O)">
+                    📁 Open
+                </button>
+                <button class="tool-button" onclick="aiPhotoshopApp.saveDocument()" title="Save (Ctrl+S)">
+                    💾 Save
+                </button>
+            </div>
+            
+            <div class="tool-group">
+                <button class="tool-button" onclick="aiPhotoshopApp.undo()" title="Undo (Ctrl+Z)">
+                    ↩️ Undo
+                </button>
+                <button class="tool-button" onclick="aiPhotoshopApp.redo()" title="Redo (Ctrl+Y)">
+                    ↪️ Redo
+                </button>
+            </div>
+            
+            <div class="tool-group">
+                <button class="tool-button active" id="selectTool" onclick="aiPhotoshopApp.selectTool('select')" title="Selection Tool (V)">
+                    👆 Select
+                </button>
+                <button class="tool-button" id="brushTool" onclick="aiPhotoshopApp.selectTool('brush')" title="Brush Tool (B)">
+                    🖌️ Brush
+                </button>
+                <button class="tool-button" id="eraserTool" onclick="aiPhotoshopApp.selectTool('eraser')" title="Eraser Tool (E)">
+                    🧽 Eraser
+                </button>
+            </div>
+            
+            <div class="tool-group">
+                <button class="tool-button ai" id="aiSegmentTool" onclick="aiPhotoshopApp.selectTool('ai-segment')" title="AI Human Segmentation">
+                    🤖 AI Segment
+                </button>
+                <button class="tool-button ai" id="aiRefineTool" onclick="aiPhotoshopApp.selectTool('ai-refine')" title="AI Refine">
+                    ✨ AI Refine
+                </button>
+                <button class="tool-button ai" id="aiBackgroundTool" onclick="aiPhotoshopApp.selectTool('ai-background')" title="AI Background">
+                    🎭 AI Background
+                </button>
+            </div>
+            
+            <div class="tool-group">
+                <label style="font-size: 11px; margin-right: 4px;">Color:</label>
+                <input type="color" id="colorPicker" class="color-picker" value="#000000" onchange="aiPhotoshopApp.setForegroundColor(this.value)">
+            </div>
+            
+            <div class="tool-group">
+                <label style="font-size: 11px; margin-right: 4px;">Size:</label>
+                <input type="range" id="sizeSlider" class="slider" min="1" max="100" value="5" onchange="aiPhotoshopApp.updateSize(this.value)">
+                <span id="sizeValue" style="font-size: 11px; min-width: 20px;">5</span>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="main-content">
+            <!-- Sidebar -->
+            <div class="sidebar">
+                <div class="sidebar-section">
+                    <div class="sidebar-header" onclick="aiPhotoshopApp.togglePanel('layers')">
+                        Layers
+                        <span id="layers-toggle">▼</span>
+                    </div>
+                    <div class="sidebar-content" id="layers-content">
+                        <!-- Layers will be populated by JavaScript -->
+                    </div>
+                    <div style="padding: 8px; border-top: 1px solid var(--border-color);">
+                        <button class="btn" onclick="aiPhotoshopApp.createNewLayer()" style="width: 100%;">➕ New Layer</button>
+                        <button class="btn" onclick="aiPhotoshopApp.duplicateLayer()" style="width: 100%;">📋 Duplicate</button>
+                        <button class="btn" onclick="aiPhotoshopApp.deleteLayer()" style="width: 100%;">🗑️ Delete</button>
+                    </div>
+                </div>
+                
+                <div class="sidebar-section">
+                    <div class="sidebar-header" onclick="aiPhotoshopApp.togglePanel('ai')">
+                        AI Segmentation
+                        <span id="ai-toggle">▼</span>
+                    </div>
+                    <div class="sidebar-content" id="ai-content">
+                        <div class="form-group">
+                            <label class="form-label">Confidence Threshold</label>
+                            <input type="range" class="slider" min="0" max="100" value="80" onchange="aiPhotoshopApp.updateConfidence(this.value)">
+                            <span id="confidenceValue">80%</span>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Refinement Level</label>
+                            <select class="form-control" onchange="aiPhotoshopApp.updateRefinementLevel(this.value)">
+                                <option value="low">Low (Fast)</option>
+                                <option value="medium" selected>Medium</option>
+                                <option value="high">High (Slow)</option>
+                            </select>
+                        </div>
+                        <button class="btn btn-ai" onclick="aiPhotoshopApp.performSegmentation()" style="width: 100%;">
+                            🎯 Segment Human
+                        </button>
+                        <button class="btn btn-ai" onclick="aiPhotoshopApp.removeBackground()" style="width: 100%;">
+                            🎭 Remove Background
+                        </button>
+                        <button class="btn btn-ai" onclick="aiPhotoshopApp.refineMask()" style="width: 100%;">
+                            ✨ Refine Mask
+                        </button>
+                        <div class="ai-progress" id="aiProgress">
+                            <div class="ai-progress-bar" id="aiProgressBar"></div>
+                            <div class="ai-progress-text" id="aiProgressText">Processing...</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="sidebar-section">
+                    <div class="sidebar-header" onclick="aiPhotoshopApp.togglePanel('mads')">
+                        MADS Dataset
+                        <span id="mads-toggle">▼</span>
+                    </div>
+                    <div class="sidebar-content" id="mads-content">
+                        <div class="form-group">
+                            <label class="form-label">Dataset Info</label>
+                            <div style="font-size: 11px; color: var(--text-secondary);">
+                                <div>Total Images: 1,192</div>
+                                <div>Categories: HipHop, Ballet, Jazz</div>
+                                <div>Format: PNG/JPG</div>
+                            </div>
+                        </div>
+                        <button class="btn" onclick="aiPhotoshopApp.loadMadsDataset()" style="width: 100%;">
+                            📊 Load Dataset
+                        </button>
+                        <button class="btn" onclick="aiPhotoshopApp.showDatasetStats()" style="width: 100%;">
+                            📈 Show Stats
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Canvas Area -->
+            <div class="canvas-container">
+                <div class="canvas-toolbar">
+                    <span>Tool: <span id="currentTool">Select</span></span>
+                    <span>Position: <span id="mousePosition">0, 0</span></span>
+                    <span>Zoom: <span id="zoomLevel">100%</span></span>
+                    <span>Size: <span id="toolSize">5px</span></span>
+                </div>
+                <canvas id="canvas" class="canvas" width="800" height="600"></canvas>
+            </div>
+        </div>
+
+        <!-- Status Bar -->
+        <div class="status-bar">
+            <div class="status-item">
+                <span>Ready</span>
+            </div>
+            <div class="status-item">
+                <span>Document: 800x600px</span>
+            </div>
+            <div class="status-item">
+                <span>AI Model: Loaded</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Notification -->
+    <div class="notification" id="notification"></div>
+
+    <script>
+        // AI-Enhanced Photoshop Application
+        class AIPhotoshopApp {
+            constructor() {
+                this.canvas = document.getElementById('canvas');
+                this.ctx = this.canvas.getContext('2d');
+                this.currentTool = 'select';
+                this.isDrawing = false;
+                this.zoom = 1;
+                
+                // AI Settings
+                this.confidenceThreshold = 0.8;
+                this.refinementLevel = 'medium';
+                this.isModelLoaded = true; // Simulated
+                this.currentMask = null;
+                
+                // Tool settings
+                this.toolSettings = {
+                    brush: { size: 5, opacity: 100 },
+                    eraser: { size: 5, opacity: 100 }
+                };
+                
+                // Layers
+                this.layers = [];
+                this.activeLayerIndex = 0;
+                
+                // History
+                this.history = [];
+                this.historyIndex = -1;
+                
+                // Colors
+                this.foregroundColor = '#000000';
+                this.backgroundColor = '#ffffff';
+                
+                // MADS Dataset
+                this.madsDataset = {
+                    totalImages: 1192,
+                    categories: ['HipHop', 'Ballet', 'Jazz', 'Contemporary'],
+                    loadedImages: 0
+                };
+                
+                this.initialize();
+            }
+            
+            initialize() {
+                this.createBackgroundLayer();
+                this.setupEventListeners();
+                this.saveState();
+                this.updateLayersPanel();
+                this.showNotification('AI-Enhanced Photoshop Application loaded! 🤖');
+            }
+            
+            createBackgroundLayer() {
+                const backgroundLayer = {
+                    id: 'background',
+                    name: 'Background',
+                    type: 'background',
+                    visible: true,
+                    locked: false,
+                    opacity: 100,
+                    blendMode: 'normal',
+                    canvas: document.createElement('canvas'),
+                    ctx: null
+                };
+                
+                backgroundLayer.canvas.width = this.canvas.width;
+                backgroundLayer.canvas.height = this.canvas.height;
+                backgroundLayer.ctx = backgroundLayer.canvas.getContext('2d');
+                
+                backgroundLayer.ctx.fillStyle = '#ffffff';
+                backgroundLayer.ctx.fillRect(0, 0, backgroundLayer.canvas.width, backgroundLayer.canvas.height);
+                
+                this.layers.push(backgroundLayer);
+            }
+            
+            setupEventListeners() {
+                this.canvas.addEventListener('mousedown', this.handleMouseDown.bind(this));
+                this.canvas.addEventListener('mousemove', this.handleMouseMove.bind(this));
+                this.canvas.addEventListener('mouseup', this.handleMouseUp.bind(this));
+                
+                document.addEventListener('keydown', this.handleKeyboard.bind(this));
+            }
+            
+            handleMouseDown(e) {
+                this.isDrawing = true;
+                const coords = this.getCanvasCoordinates(e);
+                this.executeTool('start', coords.x, coords.y);
+            }
+            
+            handleMouseMove(e) {
+                const coords = this.getCanvasCoordinates(e);
+                this.updateStatusBar(coords);
+                
+                if (this.isDrawing) {
+                    this.executeTool('move', coords.x, coords.y);
+                }
+            }
+            
+            handleMouseUp(e) {
+                this.isDrawing = false;
+                this.executeTool('end');
+                this.saveState();
+            }
+            
+            handleKeyboard(e) {
+                if (e.ctrlKey || e.metaKey) {
+                    switch(e.key) {
+                        case 'n': e.preventDefault(); this.newDocument(); break;
+                        case 'o': e.preventDefault(); this.openDocument(); break;
+                        case 's': e.preventDefault(); this.saveDocument(); break;
+                        case 'z': e.preventDefault(); this.undo(); break;
+                        case 'y': e.preventDefault(); this.redo(); break;
+                    }
+                } else {
+                    switch(e.key.toLowerCase()) {
+                        case 'v': this.selectTool('select'); break;
+                        case 'b': this.selectTool('brush'); break;
+                        case 'e': this.selectTool('eraser'); break;
+                    }
+                }
+            }
+            
+            getCanvasCoordinates(e) {
+                const rect = this.canvas.getBoundingClientRect();
+                return {
+                    x: (e.clientX - rect.left) / this.zoom,
+                    y: (e.clientY - rect.top) / this.zoom
+                };
+            }
+            
+            updateStatusBar(coords) {
+                document.getElementById('mousePosition').textContent = `${Math.round(coords.x)}, ${Math.round(coords.y)}`;
+            }
+            
+            executeTool(action, x, y) {
+                const layer = this.getActiveLayer();
+                if (!layer || layer.locked) return;
+                
+                switch(this.currentTool) {
+                    case 'brush':
+                        this.brushTool(action, x, y, layer);
+                        break;
+                    case 'eraser':
+                        this.eraserTool(action, x, y, layer);
+                        break;
+                    case 'select':
+                        this.selectTool(action, x, y);
+                        break;
+                    case 'ai-segment':
+                        this.aiSegmentTool(action, x, y);
+                        break;
+                }
+            }
+            
+            brushTool(action, x, y, layer) {
+                const settings = this.toolSettings.brush;
+                const ctx = layer.ctx;
+                
+                ctx.globalAlpha = settings.opacity / 100;
+                ctx.lineWidth = settings.size;
+                ctx.lineCap = 'round';
+                ctx.lineJoin = 'round';
+                ctx.strokeStyle = this.foregroundColor;
+                
+                if (action === 'start') {
+                    ctx.beginPath();
+                    ctx.moveTo(x, y);
+                    this.lastX = x;
+                    this.lastY = y;
+                } else if (action === 'move') {
+                    ctx.lineTo(x, y);
+                    ctx.stroke();
+                    this.lastX = x;
+                    this.lastY = y;
+                    this.render();
+                }
+            }
+            
+            eraserTool(action, x, y, layer) {
+                const settings = this.toolSettings.eraser;
+                const ctx = layer.ctx;
+                
+                ctx.globalCompositeOperation = 'destination-out';
+                ctx.globalAlpha = settings.opacity / 100;
+                ctx.lineWidth = settings.size;
+                ctx.lineCap = 'round';
+                ctx.lineJoin = 'round';
+                
+                if (action === 'start') {
+                    ctx.beginPath();
+                    ctx.moveTo(x, y);
+                    this.lastX = x;
+                    this.lastY = y;
+                } else if (action === 'move') {
+                    ctx.lineTo(x, y);
+                    ctx.stroke();
+                    this.lastX = x;
+                    this.lastY = y;
+                    this.render();
+                }
+                
+                ctx.globalCompositeOperation = 'source-over';
+            }
+            
+            selectTool(action, x, y) {
+                if (action === 'start') {
+                    this.selectionStartX = x;
+                    this.selectionStartY = y;
+                } else if (action === 'move') {
+                    this.render();
+                    this.ctx.strokeStyle = '#007bff';
+                    this.ctx.lineWidth = 1;
+                    this.ctx.setLineDash([5, 5]);
+                    this.ctx.strokeRect(
+                        this.selectionStartX,
+                        this.selectionStartY,
+                        x - this.selectionStartX,
+                        y - this.selectionStartY
+                    );
+                    this.ctx.setLineDash([]);
+                }
+            }
+            
+            aiSegmentTool(action, x, y) {
+                if (action === 'start') {
+                    this.showNotification('AI Segmentation tool selected. Click "Segment Human" to process.');
+                }
+            }
+            
+            render() {
+                this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+                
+                this.layers.forEach(layer => {
+                    if (layer.visible) {
+                        this.ctx.globalAlpha = layer.opacity / 100;
+                        this.ctx.drawImage(layer.canvas, 0, 0);
+                    }
+                });
+                
+                this.ctx.globalAlpha = 1.0;
+            }
+            
+            // Tool selection
+            selectTool(toolName) {
+                this.currentTool = toolName;
+                document.getElementById('currentTool').textContent = toolName.charAt(0).toUpperCase() + toolName.slice(1);
+                
+                document.querySelectorAll('.tool-button').forEach(btn => btn.classList.remove('active'));
+                document.getElementById(toolName + 'Tool').classList.add('active');
+            }
+            
+            // Layer management
+            getActiveLayer() {
+                return this.layers[this.activeLayerIndex];
+            }
+            
+            createNewLayer() {
+                const layer = {
+                    id: 'layer_' + Date.now(),
+                    name: 'Layer ' + this.layers.length,
+                    type: 'pixel',
+                    visible: true,
+                    locked: false,
+                    opacity: 100,
+                    blendMode: 'normal',
+                    canvas: document.createElement('canvas'),
+                    ctx: null
+                };
+                
+                layer.canvas.width = this.canvas.width;
+                layer.canvas.height = this.canvas.height;
+                layer.ctx = layer.canvas.getContext('2d');
+                
+                this.layers.splice(1, 0, layer);
+                this.activeLayerIndex = 1;
+                this.updateLayersPanel();
+                this.showNotification('New layer created');
+            }
+            
+            duplicateLayer() {
+                const layer = this.getActiveLayer();
+                if (layer && layer.type !== 'background') {
+                    const duplicate = {
+                        id: 'layer_' + Date.now(),
+                        name: layer.name + ' Copy',
+                        type: layer.type,
+                        visible: layer.visible,
+                        locked: layer.locked,
+                        opacity: layer.opacity,
+                        blendMode: layer.blendMode,
+                        canvas: document.createElement('canvas'),
+                        ctx: null
+                    };
+                    
+                    duplicate.canvas.width = layer.canvas.width;
+                    duplicate.canvas.height = layer.canvas.height;
+                    duplicate.ctx = duplicate.canvas.getContext('2d');
+                    duplicate.ctx.drawImage(layer.canvas, 0, 0);
+                    
+                    this.layers.splice(this.activeLayerIndex + 1, 0, duplicate);
+                    this.activeLayerIndex++;
+                    this.updateLayersPanel();
+                    this.showNotification('Layer duplicated');
+                }
+            }
+            
+            deleteLayer() {
+                const layer = this.getActiveLayer();
+                if (layer && layer.type !== 'background') {
+                    this.layers.splice(this.activeLayerIndex, 1);
+                    this.activeLayerIndex = Math.max(0, this.activeLayerIndex - 1);
+                    this.updateLayersPanel();
+                    this.render();
+                    this.showNotification('Layer deleted');
+                }
+            }
+            
+            updateLayersPanel() {
+                const layersContent = document.getElementById('layers-content');
+                layersContent.innerHTML = '';
+                
+                this.layers.forEach((layer, index) => {
+                    const layerItem = document.createElement('div');
+                    layerItem.className = 'sidebar-item';
+                    if (index === this.activeLayerIndex) {
+                        layerItem.classList.add('active');
+                    }
+                    
+                    layerItem.innerHTML = `
+                        <div style="display: flex; align-items: center; gap: 4px;">
+                            <span style="font-size: 10px;">${layer.visible ? '👁️' : '❌'}</span>
+                            <span style="font-size: 10px;">${layer.locked ? '🔒' : '🔓'}</span>
+                            <span>${layer.name}</span>
+                        </div>
+                    `;
+                    
+                    layerItem.onclick = () => {
+                        this.activeLayerIndex = index;
+                        this.updateLayersPanel();
+                    };
+                    
+                    layersContent.appendChild(layerItem);
+                });
+            }
+            
+            // AI Methods
+            async performSegmentation() {
+                if (!this.isModelLoaded) {
+                    this.showNotification('AI model not loaded yet', 'error');
+                    return;
+                }
+                
+                this.showAIProgress();
+                
+                // Simulate AI processing
+                for (let i = 0; i <= 100; i += 10) {
+                    await this.delay(100);
+                    this.updateAIProgress(i, `Processing segmentation... ${i}%`);
+                }
+                
+                // Create simulated segmentation mask
+                this.createSimulatedSegmentation();
+                
+                this.hideAIProgress();
+                this.showNotification('AI Human Segmentation completed! 🤖', 'success');
+            }
+            
+            createSimulatedSegmentation() {
+                const layer = this.createNewLayer();
+                layer.name = 'AI Segmentation';
+                
+                const ctx = layer.ctx;
+                const centerX = this.canvas.width / 2;
+                const centerY = this.canvas.height / 2;
+                
+                // Create a simulated human silhouette
+                ctx.fillStyle = 'rgba(0, 255, 136, 0.5)';
+                ctx.beginPath();
+                ctx.ellipse(centerX, centerY - 50, 30, 40, 0, 0, 2 * Math.PI); // Head
+                ctx.ellipse(centerX, centerY + 20, 40, 60, 0, 0, 2 * Math.PI); // Body
+                ctx.ellipse(centerX - 25, centerY + 80, 15, 40, 0, 0, 2 * Math.PI); // Left arm
+                ctx.ellipse(centerX + 25, centerY + 80, 15, 40, 0, 0, 2 * Math.PI); // Right arm
+                ctx.ellipse(centerX - 15, centerY + 120, 20, 50, 0, 0, 2 * Math.PI); // Left leg
+                ctx.ellipse(centerX + 15, centerY + 120, 20, 50, 0, 0, 2 * Math.PI); // Right leg
+                ctx.fill();
+                
+                this.currentMask = layer.canvas;
+                this.render();
+            }
+            
+            async removeBackground() {
+                if (!this.currentMask) {
+                    this.showNotification('No segmentation mask available', 'error');
+                    return;
+                }
+                
+                this.showAIProgress();
+                
+                // Simulate background removal
+                for (let i = 0; i <= 100; i += 20) {
+                    await this.delay(150);
+                    this.updateAIProgress(i, `Removing background... ${i}%`);
+                }
+                
+                // Apply mask to background layer
+                const backgroundLayer = this.layers[0];
+                const ctx = backgroundLayer.ctx;
+                
+                ctx.globalCompositeOperation = 'destination-out';
+                ctx.drawImage(this.currentMask, 0, 0);
+                ctx.globalCompositeOperation = 'source-over';
+                
+                this.hideAIProgress();
+                this.render();
+                this.showNotification('Background removed successfully! 🎭', 'success');
+            }
+            
+            async refineMask() {
+                if (!this.currentMask) {
+                    this.showNotification('No mask to refine', 'error');
+                    return;
+                }
+                
+                this.showAIProgress();
+                
+                // Simulate mask refinement
+                for (let i = 0; i <= 100; i += 15) {
+                    await this.delay(100);
+                    this.updateAIProgress(i, `Refining mask... ${i}%`);
+                }
+                
+                this.hideAIProgress();
+                this.showNotification('Mask refined successfully! ✨', 'success');
+            }
+            
+            // UI Methods
+            togglePanel(panelName) {
+                const content = document.getElementById(panelName + '-content');
+                const toggle = document.getElementById(panelName + '-toggle');
+                
+                if (content.style.display === 'none') {
+                    content.style.display = 'block';
+                    toggle.textContent = '▼';
+                } else {
+                    content.style.display = 'none';
+                    toggle.textContent = '▶';
+                }
+            }
+            
+            setForegroundColor(color) {
+                this.foregroundColor = color;
+            }
+            
+            updateSize(value) {
+                this.toolSettings.brush.size = parseInt(value);
+                this.toolSettings.eraser.size = parseInt(value);
+                document.getElementById('sizeValue').textContent = value;
+                document.getElementById('toolSize').textContent = value + 'px';
+            }
+            
+            updateConfidence(value) {
+                this.confidenceThreshold = parseInt(value) / 100;
+                document.getElementById('confidenceValue').textContent = value + '%';
+            }
+            
+            updateRefinementLevel(level) {
+                this.refinementLevel = level;
+            }
+            
+            // Document operations
+            newDocument() {
+                this.canvas.width = 800;
+                this.canvas.height = 600;
+                this.layers = [];
+                this.activeLayerIndex = 0;
+                this.createBackgroundLayer();
+                this.render();
+                this.showNotification('New document created');
+            }
+            
+            openDocument() {
+                const input = document.createElement('input');
+                input.type = 'file';
+                input.accept = 'image/*';
+                input.onchange = (e) => {
+                    const file = e.target.files[0];
+                    if (file) {
+                        const reader = new FileReader();
+                        reader.onload = (e) => {
+                            const img = new Image();
+                            img.onload = () => {
+                                this.canvas.width = img.width;
+                                this.canvas.height = img.height;
+                                this.ctx.drawImage(img, 0, 0);
+                                this.showNotification('Document opened');
+                            };
+                            img.src = e.target.result;
+                        };
+                        reader.readAsDataURL(file);
+                    }
+                };
+                input.click();
+            }
+            
+            saveDocument() {
+                const link = document.createElement('a');
+                link.download = 'ai-photoshop-document.png';
+                link.href = this.canvas.toDataURL();
+                link.click();
+                this.showNotification('Document saved');
+            }
+            
+            exportSegmentation() {
+                if (this.currentMask) {
+                    const link = document.createElement('a');
+                    link.download = 'segmentation-mask.png';
+                    link.href = this.currentMask.toDataURL();
+                    link.click();
+                    this.showNotification('Segmentation mask exported');
+                } else {
+                    this.showNotification('No segmentation mask to export', 'error');
+                }
+            }
+            
+            // History
+            saveState() {
+                this.historyIndex++;
+                if (this.historyIndex < this.history.length) {
+                    this.history = this.history.slice(0, this.historyIndex);
+                }
+                this.history.push(this.canvas.toDataURL());
+            }
+            
+            undo() {
+                if (this.historyIndex > 0) {
+                    this.historyIndex--;
+                    this.loadState();
+                    this.showNotification('Undo');
+                }
+            }
+            
+            redo() {
+                if (this.historyIndex < this.history.length - 1) {
+                    this.historyIndex++;
+                    this.loadState();
+                    this.showNotification('Redo');
+                }
+            }
+            
+            loadState() {
+                const img = new Image();
+                img.onload = () => {
+                    this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+                    this.ctx.drawImage(img, 0, 0);
+                };
+                img.src = this.history[this.historyIndex];
+            }
+            
+            // MADS Dataset methods
+            loadMadsDataset() {
+                this.showNotification('Loading MADS Dataset...', 'info');
+                setTimeout(() => {
+                    this.madsDataset.loadedImages = 100; // Simulate loading
+                    this.showNotification(`MADS Dataset loaded: ${this.madsDataset.loadedImages} images`, 'success');
+                }, 2000);
+            }
+            
+            showDatasetStats() {
+                const stats = `
+                    MADS Dataset Statistics:
+                    - Total Images: ${this.madsDataset.totalImages}
+                    - Categories: ${this.madsDataset.categories.join(', ')}
+                    - Loaded Images: ${this.madsDataset.loadedImages}
+                    - Format: PNG/JPG
+                    - License: CC BY-ND 4.0
+                `;
+                alert(stats);
+            }
+            
+            // AI Progress methods
+            showAIProgress() {
+                document.getElementById('aiProgress').style.display = 'block';
+            }
+            
+            hideAIProgress() {
+                document.getElementById('aiProgress').style.display = 'none';
+            }
+            
+            updateAIProgress(percent, text) {
+                document.getElementById('aiProgressBar').style.width = percent + '%';
+                document.getElementById('aiProgressText').textContent = text;
+            }
+            
+            // Utility methods
+            delay(ms) {
+                return new Promise(resolve => setTimeout(resolve, ms));
+            }
+            
+            showNotification(message, type = 'info') {
+                const notification = document.getElementById('notification');
+                notification.textContent = message;
+                notification.style.display = 'block';
+                
+                if (type === 'error') {
+                    notification.style.background = var(--danger-color);
+                } else if (type === 'success') {
+                    notification.style.background = var(--success-color);
+                }
+                
+                setTimeout(() => {
+                    notification.style.display = 'none';
+                }, 3000);
+            }
+            
+            showAbout() {
+                alert('AI-Enhanced Photoshop Application v2.0\n\nFeatures:\n- Human Segmentation using MADS Dataset\n- AI-powered background removal\n- Professional layer management\n- Real-time AI processing\n\nPowered by Machine Learning & Computer Vision');
+            }
+        }
+        
+        // Initialize the application
+        let aiPhotoshopApp;
+        
+        document.addEventListener('DOMContentLoaded', function() {
+            aiPhotoshopApp = new AIPhotoshopApp();
+            window.aiPhotoshopApp = aiPhotoshopApp;
+        });
+    </script>
+</body>
+</html> 

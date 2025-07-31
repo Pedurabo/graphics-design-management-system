@@ -1,0 +1,228 @@
+config:
+  target: 'https://graphicsdesignsystem.com'
+  phases:
+    - duration: 60
+      arrivalRate: 5
+      name: "Warm up"
+    - duration: 300
+      arrivalRate: 20
+      name: "Sustained load"
+    - duration: 120
+      arrivalRate: 50
+      name: "Peak load"
+    - duration: 60
+      arrivalRate: 5
+      name: "Cool down"
+  defaults:
+    headers:
+      Content-Type: 'application/json'
+      User-Agent: 'Artillery Load Test'
+  processor: './load-test-processor.js'
+
+scenarios:
+  - name: "User Authentication Flow"
+    weight: 20
+    flow:
+      - get:
+          url: "/api/health"
+          expect:
+            - statusCode: 200
+      - post:
+          url: "/api/auth/register"
+          json:
+            email: "{{ $randomEmail() }}"
+            password: "TestPassword123!"
+            name: "{{ $randomString() }}"
+          expect:
+            - statusCode: [201, 409]
+      - post:
+          url: "/api/auth/login"
+          json:
+            email: "{{ $processEnvironment.TEST_USER_EMAIL }}"
+            password: "{{ $processEnvironment.TEST_USER_PASSWORD }}"
+          capture:
+            - json: "$.token"
+              as: "authToken"
+          expect:
+            - statusCode: 200
+      - get:
+          url: "/api/auth/me"
+          headers:
+            Authorization: "Bearer {{ authToken }}"
+          expect:
+            - statusCode: 200
+
+  - name: "Project Management"
+    weight: 30
+    flow:
+      - post:
+          url: "/api/auth/login"
+          json:
+            email: "{{ $processEnvironment.TEST_USER_EMAIL }}"
+            password: "{{ $processEnvironment.TEST_USER_PASSWORD }}"
+          capture:
+            - json: "$.token"
+              as: "authToken"
+      - get:
+          url: "/api/projects"
+          headers:
+            Authorization: "Bearer {{ authToken }}"
+          expect:
+            - statusCode: 200
+      - post:
+          url: "/api/projects"
+          headers:
+            Authorization: "Bearer {{ authToken }}"
+          json:
+            name: "Load Test Project {{ $randomString() }}"
+            description: "Project created during load testing"
+          capture:
+            - json: "$.id"
+              as: "projectId"
+          expect:
+            - statusCode: 201
+      - get:
+          url: "/api/projects/{{ projectId }}"
+          headers:
+            Authorization: "Bearer {{ authToken }}"
+          expect:
+            - statusCode: 200
+      - put:
+          url: "/api/projects/{{ projectId }}"
+          headers:
+            Authorization: "Bearer {{ authToken }}"
+          json:
+            name: "Updated Load Test Project"
+            description: "Updated during load testing"
+          expect:
+            - statusCode: 200
+
+  - name: "Asset Management"
+    weight: 25
+    flow:
+      - post:
+          url: "/api/auth/login"
+          json:
+            email: "{{ $processEnvironment.TEST_USER_EMAIL }}"
+            password: "{{ $processEnvironment.TEST_USER_PASSWORD }}"
+          capture:
+            - json: "$.token"
+              as: "authToken"
+      - get:
+          url: "/api/assets"
+          headers:
+            Authorization: "Bearer {{ authToken }}"
+          expect:
+            - statusCode: 200
+      - post:
+          url: "/api/assets/upload"
+          headers:
+            Authorization: "Bearer {{ authToken }}"
+          formData:
+            file: "{{ $randomString(1000) }}"
+            filename: "test-asset-{{ $randomString() }}.png"
+          expect:
+            - statusCode: 201
+
+  - name: "AI Services"
+    weight: 15
+    flow:
+      - post:
+          url: "/api/auth/login"
+          json:
+            email: "{{ $processEnvironment.TEST_USER_EMAIL }}"
+            password: "{{ $processEnvironment.TEST_USER_PASSWORD }}"
+          capture:
+            - json: "$.token"
+              as: "authToken"
+      - post:
+          url: "/api/ai/enhance"
+          headers:
+            Authorization: "Bearer {{ authToken }}"
+          json:
+            imageUrl: "https://example.com/test-image.png"
+            enhancements: ["brightness", "contrast"]
+          expect:
+            - statusCode: 200
+      - post:
+          url: "/api/ai/segment"
+          headers:
+            Authorization: "Bearer {{ authToken }}"
+          json:
+            imageUrl: "https://example.com/test-image.png"
+          expect:
+            - statusCode: 200
+
+  - name: "Real-time Collaboration"
+    weight: 10
+    flow:
+      - post:
+          url: "/api/auth/login"
+          json:
+            email: "{{ $processEnvironment.TEST_USER_EMAIL }}"
+            password: "{{ $processEnvironment.TEST_USER_PASSWORD }}"
+          capture:
+            - json: "$.token"
+              as: "authToken"
+      - post:
+          url: "/api/projects"
+          headers:
+            Authorization: "Bearer {{ authToken }}"
+          json:
+            name: "Collaboration Test Project"
+            description: "Project for collaboration testing"
+          capture:
+            - json: "$.id"
+              as: "projectId"
+      - get:
+          url: "/api/collaboration/{{ projectId }}/users"
+          headers:
+            Authorization: "Bearer {{ authToken }}"
+          expect:
+            - statusCode: 200
+
+  - name: "Static Assets"
+    weight: 10
+    flow:
+      - get:
+          url: "/"
+          expect:
+            - statusCode: 200
+      - get:
+          url: "/static/js/main.js"
+          expect:
+            - statusCode: 200
+      - get:
+          url: "/static/css/main.css"
+          expect:
+            - statusCode: 200
+      - get:
+          url: "/favicon.ico"
+          expect:
+            - statusCode: 200
+
+# Custom processor for dynamic data
+processor: |
+  function generateRandomEmail() {
+    return `test-${Date.now()}-${Math.random().toString(36).substr(2, 9)}@example.com`;
+  }
+
+  function generateRandomString(length = 10) {
+    return Math.random().toString(36).substr(2, length);
+  }
+
+  function generateTestImage() {
+    // Generate a simple test image data
+    const canvas = require('canvas');
+    const c = canvas.createCanvas(100, 100);
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#ff0000';
+    ctx.fillRect(0, 0, 100, 100);
+    return c.toBuffer();
+  }
+
+  module.exports = {
+    generateRandomEmail,
+    generateRandomString,
+    generateTestImage
+  }; 

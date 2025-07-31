@@ -1,0 +1,1031 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Enhanced Graphics Studio - Professional Grade</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #2d2d2d;
+            color: #e6e6e6;
+            overflow: hidden;
+            user-select: none;
+        }
+
+        /* Main Application Layout */
+        .app-container {
+            display: grid;
+            grid-template-areas: 
+                "header header header"
+                "toolbar canvas panels"
+                "status status status";
+            grid-template-rows: 60px 1fr 30px;
+            grid-template-columns: 60px 1fr 300px;
+            height: 100vh;
+            background: #1e1e1e;
+        }
+
+        /* Header Bar */
+        .header {
+            grid-area: header;
+            background: linear-gradient(135deg, #3a3a3a 0%, #2d2d2d 100%);
+            border-bottom: 1px solid #4a4a4a;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 18px;
+            font-weight: 600;
+            color: #00d4ff;
+        }
+
+        .menu-bar {
+            display: flex;
+            gap: 20px;
+        }
+
+        .menu-item {
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            position: relative;
+        }
+
+        .menu-item:hover {
+            background: rgba(255,255,255,0.1);
+        }
+
+        .menu-item.active {
+            background: rgba(0,212,255,0.2);
+            color: #00d4ff;
+        }
+
+        /* Toolbar */
+        .toolbar {
+            grid-area: toolbar;
+            background: #2a2a2a;
+            border-right: 1px solid #4a4a4a;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 10px 0;
+            gap: 5px;
+        }
+
+        .tool-group {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+            margin-bottom: 15px;
+        }
+
+        .tool-button {
+            width: 40px;
+            height: 40px;
+            border: none;
+            background: #3a3a3a;
+            border-radius: 6px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s ease;
+            position: relative;
+        }
+
+        .tool-button:hover {
+            background: #4a4a4a;
+            transform: translateY(-1px);
+        }
+
+        .tool-button.active {
+            background: #00d4ff;
+            color: #1e1e1e;
+            box-shadow: 0 2px 8px rgba(0,212,255,0.3);
+        }
+
+        .tool-button .tooltip {
+            position: absolute;
+            left: 50px;
+            background: #1e1e1e;
+            color: #e6e6e6;
+            padding: 5px 10px;
+            border-radius: 4px;
+            font-size: 12px;
+            white-space: nowrap;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.2s ease;
+            z-index: 1000;
+        }
+
+        .tool-button:hover .tooltip {
+            opacity: 1;
+        }
+
+        /* Canvas Area */
+        .canvas-container {
+            grid-area: canvas;
+            background: #1e1e1e;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .canvas-wrapper {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        #mainCanvas {
+            display: block;
+            background: #ffffff;
+            cursor: crosshair;
+        }
+
+        .canvas-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            pointer-events: none;
+            z-index: 10;
+        }
+
+        /* Panels */
+        .panels {
+            grid-area: panels;
+            background: #2a2a2a;
+            border-left: 1px solid #4a4a4a;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .panel {
+            border-bottom: 1px solid #4a4a4a;
+            background: #2a2a2a;
+        }
+
+        .panel-header {
+            padding: 12px 15px;
+            background: #3a3a3a;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            transition: background 0.2s ease;
+        }
+
+        .panel-header:hover {
+            background: #4a4a4a;
+        }
+
+        .panel-content {
+            padding: 15px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        .panel.collapsed .panel-content {
+            display: none;
+        }
+
+        /* Layers Panel */
+        .layer-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background 0.2s ease;
+        }
+
+        .layer-item:hover {
+            background: rgba(255,255,255,0.1);
+        }
+
+        .layer-item.active {
+            background: rgba(0,212,255,0.2);
+        }
+
+        .layer-visibility {
+            width: 16px;
+            height: 16px;
+            border: 1px solid #666;
+            border-radius: 2px;
+            cursor: pointer;
+        }
+
+        .layer-visibility.visible {
+            background: #00d4ff;
+        }
+
+        /* Properties Panel */
+        .property-group {
+            margin-bottom: 15px;
+        }
+
+        .property-label {
+            font-size: 12px;
+            color: #999;
+            margin-bottom: 5px;
+        }
+
+        .property-control {
+            width: 100%;
+            padding: 8px;
+            background: #3a3a3a;
+            border: 1px solid #4a4a4a;
+            border-radius: 4px;
+            color: #e6e6e6;
+            font-size: 14px;
+        }
+
+        .property-control:focus {
+            outline: none;
+            border-color: #00d4ff;
+        }
+
+        .color-picker {
+            width: 100%;
+            height: 40px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        .slider-container {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .slider {
+            flex: 1;
+            height: 4px;
+            background: #4a4a4a;
+            border-radius: 2px;
+            outline: none;
+            cursor: pointer;
+        }
+
+        .slider::-webkit-slider-thumb {
+            appearance: none;
+            width: 16px;
+            height: 16px;
+            background: #00d4ff;
+            border-radius: 50%;
+            cursor: pointer;
+        }
+
+        .slider-value {
+            min-width: 40px;
+            text-align: right;
+            font-size: 12px;
+            color: #999;
+        }
+
+        /* Status Bar */
+        .status-bar {
+            grid-area: status;
+            background: #1e1e1e;
+            border-top: 1px solid #4a4a4a;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 15px;
+            font-size: 12px;
+            color: #999;
+        }
+
+        .status-left {
+            display: flex;
+            gap: 20px;
+        }
+
+        .status-right {
+            display: flex;
+            gap: 20px;
+        }
+
+        /* Context Menus */
+        .context-menu {
+            position: absolute;
+            background: #2a2a2a;
+            border: 1px solid #4a4a4a;
+            border-radius: 6px;
+            padding: 5px 0;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.5);
+            z-index: 1000;
+            min-width: 150px;
+        }
+
+        .context-menu-item {
+            padding: 8px 15px;
+            cursor: pointer;
+            transition: background 0.2s ease;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .context-menu-item:hover {
+            background: rgba(255,255,255,0.1);
+        }
+
+        .context-menu-separator {
+            height: 1px;
+            background: #4a4a4a;
+            margin: 5px 0;
+        }
+
+        /* Modal Dialogs */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.8);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 2000;
+        }
+
+        .modal {
+            background: #2a2a2a;
+            border-radius: 8px;
+            padding: 20px;
+            min-width: 400px;
+            max-width: 600px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+        }
+
+        .modal-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #4a4a4a;
+        }
+
+        .modal-title {
+            font-size: 18px;
+            font-weight: 600;
+        }
+
+        .modal-close {
+            background: none;
+            border: none;
+            color: #999;
+            font-size: 20px;
+            cursor: pointer;
+            padding: 5px;
+        }
+
+        .modal-close:hover {
+            color: #e6e6e6;
+        }
+
+        /* Buttons */
+        .btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.2s ease;
+        }
+
+        .btn-primary {
+            background: #00d4ff;
+            color: #1e1e1e;
+        }
+
+        .btn-primary:hover {
+            background: #00b8e6;
+        }
+
+        .btn-secondary {
+            background: #4a4a4a;
+            color: #e6e6e6;
+        }
+
+        .btn-secondary:hover {
+            background: #5a5a5a;
+        }
+
+        /* Animations */
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .fade-in {
+            animation: fadeIn 0.3s ease;
+        }
+
+        /* Responsive Design */
+        @media (max-width: 1200px) {
+            .app-container {
+                grid-template-columns: 60px 1fr 250px;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .app-container {
+                grid-template-areas: 
+                    "header header"
+                    "toolbar canvas"
+                    "panels panels"
+                    "status status";
+                grid-template-columns: 60px 1fr;
+                grid-template-rows: 60px 1fr 200px 30px;
+            }
+        }
+
+        /* Custom Scrollbars */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: #2a2a2a;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #4a4a4a;
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #5a5a5a;
+        }
+    </style>
+</head>
+<body>
+    <div class="app-container">
+        <!-- Header -->
+        <header class="header">
+            <div class="logo">
+                <span>🎨</span>
+                Enhanced Graphics Studio
+            </div>
+            <nav class="menu-bar">
+                <div class="menu-item" data-menu="file">File</div>
+                <div class="menu-item" data-menu="edit">Edit</div>
+                <div class="menu-item" data-menu="image">Image</div>
+                <div class="menu-item" data-menu="layer">Layer</div>
+                <div class="menu-item" data-menu="select">Select</div>
+                <div class="menu-item" data-menu="filter">Filter</div>
+                <div class="menu-item" data-menu="view">View</div>
+                <div class="menu-item" data-menu="window">Window</div>
+                <div class="menu-item" data-menu="help">Help</div>
+            </nav>
+        </header>
+
+        <!-- Toolbar -->
+        <aside class="toolbar">
+            <div class="tool-group">
+                <button class="tool-button active" data-tool="move" title="Move Tool (V)">
+                    <span>↔</span>
+                    <div class="tooltip">Move Tool (V)</div>
+                </button>
+                <button class="tool-button" data-tool="marquee" title="Rectangular Marquee Tool (M)">
+                    <span>▢</span>
+                    <div class="tooltip">Rectangular Marquee Tool (M)</div>
+                </button>
+                <button class="tool-button" data-tool="lasso" title="Lasso Tool (L)">
+                    <span>✂</span>
+                    <div class="tooltip">Lasso Tool (L)</div>
+                </button>
+                <button class="tool-button" data-tool="wand" title="Magic Wand Tool (W)">
+                    <span>⚡</span>
+                    <div class="tooltip">Magic Wand Tool (W)</div>
+                </button>
+            </div>
+
+            <div class="tool-group">
+                <button class="tool-button" data-tool="crop" title="Crop Tool (C)">
+                    <span>✂</span>
+                    <div class="tooltip">Crop Tool (C)</div>
+                </button>
+                <button class="tool-button" data-tool="eyedropper" title="Eyedropper Tool (I)">
+                    <span>👁</span>
+                    <div class="tooltip">Eyedropper Tool (I)</div>
+                </button>
+                <button class="tool-button" data-tool="heal" title="Spot Healing Brush Tool (J)">
+                    <span>🩹</span>
+                    <div class="tooltip">Spot Healing Brush Tool (J)</div>
+                </button>
+                <button class="tool-button" data-tool="brush" title="Brush Tool (B)">
+                    <span>🖌</span>
+                    <div class="tooltip">Brush Tool (B)</div>
+                </button>
+            </div>
+
+            <div class="tool-group">
+                <button class="tool-button" data-tool="stamp" title="Clone Stamp Tool (S)">
+                    <span>🖲</span>
+                    <div class="tooltip">Clone Stamp Tool (S)</div>
+                </button>
+                <button class="tool-button" data-tool="eraser" title="Eraser Tool (E)">
+                    <span>🧽</span>
+                    <div class="tooltip">Eraser Tool (E)</div>
+                </button>
+                <button class="tool-button" data-tool="gradient" title="Gradient Tool (G)">
+                    <span>🌈</span>
+                    <div class="tooltip">Gradient Tool (G)</div>
+                </button>
+                <button class="tool-button" data-tool="blur" title="Blur Tool (R)">
+                    <span>💫</span>
+                    <div class="tooltip">Blur Tool (R)</div>
+                </button>
+            </div>
+
+            <div class="tool-group">
+                <button class="tool-button" data-tool="dodge" title="Dodge Tool (O)">
+                    <span>☀</span>
+                    <div class="tooltip">Dodge Tool (O)</div>
+                </button>
+                <button class="tool-button" data-tool="pen" title="Pen Tool (P)">
+                    <span>✒</span>
+                    <div class="tooltip">Pen Tool (P)</div>
+                </button>
+                <button class="tool-button" data-tool="text" title="Type Tool (T)">
+                    <span>T</span>
+                    <div class="tooltip">Type Tool (T)</div>
+                </button>
+                <button class="tool-button" data-tool="path" title="Path Selection Tool (A)">
+                    <span>⌘</span>
+                    <div class="tooltip">Path Selection Tool (A)</div>
+                </button>
+            </div>
+
+            <div class="tool-group">
+                <button class="tool-button" data-tool="rectangle" title="Rectangle Tool (U)">
+                    <span>▢</span>
+                    <div class="tooltip">Rectangle Tool (U)</div>
+                </button>
+                <button class="tool-button" data-tool="hand" title="Hand Tool (H)">
+                    <span>✋</span>
+                    <div class="tooltip">Hand Tool (H)</div>
+                </button>
+                <button class="tool-button" data-tool="zoom" title="Zoom Tool (Z)">
+                    <span>🔍</span>
+                    <div class="tooltip">Zoom Tool (Z)</div>
+                </button>
+            </div>
+        </aside>
+
+        <!-- Canvas Area -->
+        <main class="canvas-container">
+            <div class="canvas-wrapper">
+                <canvas id="mainCanvas" width="1920" height="1080"></canvas>
+                <div class="canvas-overlay" id="canvasOverlay"></div>
+            </div>
+        </main>
+
+        <!-- Panels -->
+        <aside class="panels">
+            <!-- Layers Panel -->
+            <div class="panel">
+                <div class="panel-header" data-panel="layers">
+                    <span>Layers</span>
+                    <span>▼</span>
+                </div>
+                <div class="panel-content">
+                    <div class="layer-item active">
+                        <div class="layer-visibility visible"></div>
+                        <span>Background</span>
+                    </div>
+                    <div class="layer-item">
+                        <div class="layer-visibility visible"></div>
+                        <span>Layer 1</span>
+                    </div>
+                    <div class="layer-item">
+                        <div class="layer-visibility"></div>
+                        <span>Layer 2</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Properties Panel -->
+            <div class="panel">
+                <div class="panel-header" data-panel="properties">
+                    <span>Properties</span>
+                    <span>▼</span>
+                </div>
+                <div class="panel-content">
+                    <div class="property-group">
+                        <div class="property-label">Color</div>
+                        <input type="color" class="color-picker" value="#000000">
+                    </div>
+                    <div class="property-group">
+                        <div class="property-label">Size</div>
+                        <div class="slider-container">
+                            <input type="range" class="slider" min="1" max="100" value="10">
+                            <span class="slider-value">10</span>
+                        </div>
+                    </div>
+                    <div class="property-group">
+                        <div class="property-label">Opacity</div>
+                        <div class="slider-container">
+                            <input type="range" class="slider" min="0" max="100" value="100">
+                            <span class="slider-value">100%</span>
+                        </div>
+                    </div>
+                    <div class="property-group">
+                        <div class="property-label">Flow</div>
+                        <div class="slider-container">
+                            <input type="range" class="slider" min="0" max="100" value="100">
+                            <span class="slider-value">100%</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- History Panel -->
+            <div class="panel">
+                <div class="panel-header" data-panel="history">
+                    <span>History</span>
+                    <span>▼</span>
+                </div>
+                <div class="panel-content">
+                    <div class="history-item">New Document</div>
+                    <div class="history-item">Brush Stroke</div>
+                    <div class="history-item">Color Change</div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Status Bar -->
+        <footer class="status-bar">
+            <div class="status-left">
+                <span id="coordinates">X: 0, Y: 0</span>
+                <span id="documentSize">1920 x 1080 px</span>
+                <span id="zoomLevel">100%</span>
+            </div>
+            <div class="status-right">
+                <span id="memoryUsage">Memory: 128MB</span>
+                <span id="processingStatus">Ready</span>
+            </div>
+        </footer>
+    </div>
+
+    <script>
+        class EnhancedGraphicsStudio {
+            constructor() {
+                this.canvas = document.getElementById('mainCanvas');
+                this.ctx = this.canvas.getContext('2d');
+                this.currentTool = 'move';
+                this.isDrawing = false;
+                this.lastX = 0;
+                this.lastY = 0;
+                this.zoom = 1;
+                this.panX = 0;
+                this.panY = 0;
+                this.history = [];
+                this.historyIndex = -1;
+                
+                this.initialize();
+            }
+
+            initialize() {
+                this.setupEventListeners();
+                this.setupCanvas();
+                this.updateUI();
+                this.saveState();
+            }
+
+            setupCanvas() {
+                // Set canvas background
+                this.ctx.fillStyle = '#ffffff';
+                this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+                
+                // Enable image smoothing
+                this.ctx.imageSmoothingEnabled = true;
+                this.ctx.imageSmoothingQuality = 'high';
+            }
+
+            setupEventListeners() {
+                // Tool selection
+                document.querySelectorAll('.tool-button').forEach(btn => {
+                    btn.addEventListener('click', (e) => {
+                        this.selectTool(e.target.closest('.tool-button').dataset.tool);
+                    });
+                });
+
+                // Canvas events
+                this.canvas.addEventListener('mousedown', (e) => this.handleMouseDown(e));
+                this.canvas.addEventListener('mousemove', (e) => this.handleMouseMove(e));
+                this.canvas.addEventListener('mouseup', (e) => this.handleMouseUp(e));
+                this.canvas.addEventListener('wheel', (e) => this.handleWheel(e));
+
+                // Panel toggles
+                document.querySelectorAll('.panel-header').forEach(header => {
+                    header.addEventListener('click', (e) => {
+                        const panel = e.target.closest('.panel');
+                        panel.classList.toggle('collapsed');
+                    });
+                });
+
+                // Keyboard shortcuts
+                document.addEventListener('keydown', (e) => this.handleKeyDown(e));
+
+                // Property controls
+                document.querySelectorAll('.slider').forEach(slider => {
+                    slider.addEventListener('input', (e) => this.updateProperty(e.target));
+                });
+
+                document.querySelector('.color-picker').addEventListener('change', (e) => {
+                    this.updateColor(e.target.value);
+                });
+            }
+
+            selectTool(tool) {
+                this.currentTool = tool;
+                
+                // Update active tool button
+                document.querySelectorAll('.tool-button').forEach(btn => {
+                    btn.classList.remove('active');
+                });
+                document.querySelector(`[data-tool="${tool}"]`).classList.add('active');
+                
+                this.updateCursor();
+            }
+
+            updateCursor() {
+                const cursors = {
+                    move: 'grab',
+                    marquee: 'crosshair',
+                    lasso: 'crosshair',
+                    wand: 'crosshair',
+                    crop: 'crosshair',
+                    eyedropper: 'crosshair',
+                    heal: 'crosshair',
+                    brush: 'crosshair',
+                    stamp: 'crosshair',
+                    eraser: 'crosshair',
+                    gradient: 'crosshair',
+                    blur: 'crosshair',
+                    dodge: 'crosshair',
+                    pen: 'crosshair',
+                    text: 'text',
+                    path: 'crosshair',
+                    rectangle: 'crosshair',
+                    hand: 'grab',
+                    zoom: 'crosshair'
+                };
+                
+                this.canvas.style.cursor = cursors[this.currentTool] || 'default';
+            }
+
+            handleMouseDown(e) {
+                this.isDrawing = true;
+                const rect = this.canvas.getBoundingClientRect();
+                this.lastX = (e.clientX - rect.left) / this.zoom;
+                this.lastY = (e.clientY - rect.top) / this.zoom;
+                
+                this.executeTool('start');
+            }
+
+            handleMouseMove(e) {
+                if (!this.isDrawing) return;
+                
+                const rect = this.canvas.getBoundingClientRect();
+                const x = (e.clientX - rect.left) / this.zoom;
+                const y = (e.clientY - rect.top) / this.zoom;
+                
+                this.executeTool('move', x, y);
+                
+                this.lastX = x;
+                this.lastY = y;
+                
+                this.updateCoordinates(x, y);
+            }
+
+            handleMouseUp(e) {
+                this.isDrawing = false;
+                this.executeTool('end');
+                this.saveState();
+            }
+
+            handleWheel(e) {
+                e.preventDefault();
+                
+                if (e.ctrlKey) {
+                    // Zoom
+                    const delta = e.deltaY > 0 ? 0.9 : 1.1;
+                    this.zoom = Math.max(0.1, Math.min(5, this.zoom * delta));
+                    this.updateZoom();
+                } else {
+                    // Pan
+                    this.panX -= e.deltaX;
+                    this.panY -= e.deltaY;
+                    this.updatePan();
+                }
+            }
+
+            handleKeyDown(e) {
+                const shortcuts = {
+                    'b': 'brush',
+                    'e': 'eraser',
+                    'v': 'move',
+                    'm': 'marquee',
+                    'l': 'lasso',
+                    'w': 'wand',
+                    'c': 'crop',
+                    'i': 'eyedropper',
+                    'j': 'heal',
+                    's': 'stamp',
+                    'g': 'gradient',
+                    'r': 'blur',
+                    'o': 'dodge',
+                    'p': 'pen',
+                    't': 'text',
+                    'a': 'path',
+                    'u': 'rectangle',
+                    'h': 'hand',
+                    'z': 'zoom'
+                };
+                
+                if (shortcuts[e.key.toLowerCase()]) {
+                    this.selectTool(shortcuts[e.key.toLowerCase()]);
+                }
+                
+                // Undo/Redo
+                if (e.ctrlKey || e.metaKey) {
+                    if (e.key === 'z' && !e.shiftKey) {
+                        this.undo();
+                    } else if (e.key === 'z' && e.shiftKey) {
+                        this.redo();
+                    } else if (e.key === 'y') {
+                        this.redo();
+                    }
+                }
+            }
+
+            executeTool(action, x, y) {
+                switch (this.currentTool) {
+                    case 'brush':
+                        this.handleBrush(action, x, y);
+                        break;
+                    case 'eraser':
+                        this.handleEraser(action, x, y);
+                        break;
+                    case 'move':
+                        this.handleMove(action, x, y);
+                        break;
+                    case 'zoom':
+                        this.handleZoom(action, x, y);
+                        break;
+                    case 'hand':
+                        this.handleHand(action, x, y);
+                        break;
+                    default:
+                        this.handleGenericTool(action, x, y);
+                }
+            }
+
+            handleBrush(action, x, y) {
+                if (action === 'start') {
+                    this.ctx.beginPath();
+                    this.ctx.moveTo(this.lastX, this.lastY);
+                } else if (action === 'move') {
+                    this.ctx.lineTo(x, y);
+                    this.ctx.stroke();
+                }
+            }
+
+            handleEraser(action, x, y) {
+                const originalComposite = this.ctx.globalCompositeOperation;
+                this.ctx.globalCompositeOperation = 'destination-out';
+                this.handleBrush(action, x, y);
+                this.ctx.globalCompositeOperation = originalComposite;
+            }
+
+            handleMove(action, x, y) {
+                // Move tool implementation
+            }
+
+            handleZoom(action, x, y) {
+                // Zoom tool implementation
+            }
+
+            handleHand(action, x, y) {
+                // Hand tool implementation
+            }
+
+            handleGenericTool(action, x, y) {
+                // Generic tool implementation
+            }
+
+            updateProperty(slider) {
+                const value = slider.value;
+                const valueDisplay = slider.parentElement.querySelector('.slider-value');
+                
+                if (slider.classList.contains('opacity-slider')) {
+                    valueDisplay.textContent = value + '%';
+                } else {
+                    valueDisplay.textContent = value;
+                }
+            }
+
+            updateColor(color) {
+                this.ctx.strokeStyle = color;
+                this.ctx.fillStyle = color;
+            }
+
+            updateCoordinates(x, y) {
+                document.getElementById('coordinates').textContent = 
+                    `X: ${Math.round(x)}, Y: ${Math.round(y)}`;
+            }
+
+            updateZoom() {
+                document.getElementById('zoomLevel').textContent = 
+                    `${Math.round(this.zoom * 100)}%`;
+            }
+
+            updatePan() {
+                // Update pan display
+            }
+
+            saveState() {
+                const imageData = this.ctx.getImageData(0, 0, this.canvas.width, this.canvas.height);
+                
+                // Remove any states after current index
+                this.history = this.history.slice(0, this.historyIndex + 1);
+                
+                // Add new state
+                this.history.push(imageData);
+                this.historyIndex++;
+                
+                // Limit history size
+                if (this.history.length > 50) {
+                    this.history.shift();
+                    this.historyIndex--;
+                }
+            }
+
+            undo() {
+                if (this.historyIndex > 0) {
+                    this.historyIndex--;
+                    this.restoreState();
+                }
+            }
+
+            redo() {
+                if (this.historyIndex < this.history.length - 1) {
+                    this.historyIndex++;
+                    this.restoreState();
+                }
+            }
+
+            restoreState() {
+                if (this.history[this.historyIndex]) {
+                    this.ctx.putImageData(this.history[this.historyIndex], 0, 0);
+                }
+            }
+
+            updateUI() {
+                // Update UI elements based on current state
+                this.updateCoordinates(0, 0);
+                this.updateZoom();
+            }
+        }
+
+        // Initialize the application
+        document.addEventListener('DOMContentLoaded', () => {
+            const app = new EnhancedGraphicsStudio();
+            
+            // Make app globally accessible for debugging
+            window.graphicsApp = app;
+            
+            console.log('Enhanced Graphics Studio initialized successfully');
+        });
+    </script>
+</body>
+</html> 

@@ -1,0 +1,616 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Modular Photoshop Application</title>
+    <style>
+        :root {
+            --bg-primary: #2d2d2d;
+            --bg-secondary: #3c3c3c;
+            --text-primary: #ffffff;
+            --text-secondary: #cccccc;
+            --border-color: #555555;
+            --accent-color: #007bff;
+            --success-color: #28a745;
+            --warning-color: #ffc107;
+            --danger-color: #dc3545;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            overflow: hidden;
+            height: 100vh;
+        }
+
+        .app-container {
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+        }
+
+        /* Menu Bar */
+        .menu-bar {
+            background: var(--bg-secondary);
+            color: var(--text-primary);
+            padding: 4px 8px;
+            display: flex;
+            align-items: center;
+            font-size: 12px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .menu-item {
+            padding: 4px 8px;
+            cursor: pointer;
+            border-radius: 3px;
+            position: relative;
+        }
+
+        .menu-item:hover {
+            background: var(--accent-color);
+        }
+
+        .dropdown {
+            position: relative;
+            display: inline-block;
+        }
+
+        .dropdown-content {
+            display: none;
+            position: absolute;
+            background: var(--bg-secondary);
+            min-width: 160px;
+            box-shadow: 0 8px 16px rgba(0,0,0,0.3);
+            z-index: 1000;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+        }
+
+        .dropdown:hover .dropdown-content {
+            display: block;
+        }
+
+        .dropdown-item {
+            color: var(--text-primary);
+            padding: 8px 12px;
+            text-decoration: none;
+            display: block;
+            font-size: 12px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .dropdown-item:hover {
+            background: var(--accent-color);
+        }
+
+        /* Toolbar */
+        .toolbar {
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border-color);
+            padding: 8px 16px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .tool-group {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            padding: 4px 8px;
+            border-right: 1px solid var(--border-color);
+        }
+
+        .tool-group:last-child {
+            border-right: none;
+        }
+
+        .tool-button {
+            background: var(--bg-primary);
+            border: 1px solid var(--border-color);
+            color: var(--text-primary);
+            padding: 6px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            transition: all 0.2s ease;
+        }
+
+        .tool-button:hover {
+            background: var(--accent-color);
+            border-color: var(--accent-color);
+        }
+
+        .tool-button.active {
+            background: var(--accent-color);
+            color: white;
+            border-color: var(--accent-color);
+        }
+
+        /* Main Content */
+        .main-content {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        /* Sidebar */
+        .sidebar {
+            width: 250px;
+            background: var(--bg-secondary);
+            border-right: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+        }
+
+        .sidebar-section {
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .sidebar-header {
+            background: var(--bg-primary);
+            padding: 8px 12px;
+            font-weight: bold;
+            font-size: 12px;
+            color: var(--text-primary);
+            border-bottom: 1px solid var(--border-color);
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .sidebar-header:hover {
+            background: var(--accent-color);
+        }
+
+        .sidebar-content {
+            padding: 8px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+
+        .sidebar-item {
+            padding: 6px 8px;
+            cursor: pointer;
+            border-radius: 4px;
+            font-size: 12px;
+            margin-bottom: 2px;
+            color: var(--text-primary);
+        }
+
+        .sidebar-item:hover {
+            background: var(--accent-color);
+        }
+
+        .sidebar-item.active {
+            background: var(--accent-color);
+            color: white;
+        }
+
+        /* Canvas Area */
+        .canvas-container {
+            flex: 1;
+            background: var(--bg-primary);
+            display: flex;
+            flex-direction: column;
+            position: relative;
+        }
+
+        .canvas-toolbar {
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border-color);
+            padding: 8px 16px;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            font-size: 12px;
+            color: var(--text-primary);
+        }
+
+        .canvas {
+            flex: 1;
+            background: white;
+            margin: 16px;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+            cursor: crosshair;
+        }
+
+        /* Status Bar */
+        .status-bar {
+            background: var(--bg-secondary);
+            border-top: 1px solid var(--border-color);
+            padding: 4px 16px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 11px;
+            color: var(--text-secondary);
+        }
+
+        /* Form Controls */
+        .form-group {
+            margin-bottom: 12px;
+        }
+
+        .form-label {
+            display: block;
+            margin-bottom: 4px;
+            font-size: 12px;
+            font-weight: bold;
+            color: var(--text-primary);
+        }
+
+        .form-control {
+            width: 100%;
+            padding: 6px 8px;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            font-size: 12px;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+        }
+
+        .form-control:focus {
+            outline: none;
+            border-color: var(--accent-color);
+            box-shadow: 0 0 0 2px rgba(0,123,255,0.25);
+        }
+
+        /* Buttons */
+        .btn {
+            padding: 8px 16px;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+        }
+
+        .btn:hover {
+            background: var(--accent-color);
+            border-color: var(--accent-color);
+        }
+
+        .btn-primary {
+            background: var(--accent-color);
+            color: white;
+            border-color: var(--accent-color);
+        }
+
+        /* Sliders */
+        .slider {
+            width: 100%;
+            height: 6px;
+            border-radius: 3px;
+            background: var(--border-color);
+            outline: none;
+            -webkit-appearance: none;
+        }
+
+        .slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: var(--accent-color);
+            cursor: pointer;
+        }
+
+        /* Color Picker */
+        .color-picker {
+            width: 100%;
+            height: 40px;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        /* Notification */
+        .notification {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: var(--success-color);
+            color: white;
+            padding: 12px 20px;
+            border-radius: 4px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+            z-index: 1001;
+            display: none;
+            font-size: 12px;
+        }
+
+        /* Modal */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 2000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.5);
+        }
+
+        .modal-content {
+            background-color: var(--bg-secondary);
+            margin: 10% auto;
+            padding: 20px;
+            border-radius: 8px;
+            width: 400px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+            color: var(--text-primary);
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .modal-title {
+            font-weight: bold;
+            font-size: 16px;
+        }
+
+        .close {
+            cursor: pointer;
+            font-size: 20px;
+            font-weight: bold;
+            color: var(--text-secondary);
+        }
+
+        .close:hover {
+            color: var(--danger-color);
+        }
+    </style>
+</head>
+<body>
+    <div class="app-container">
+        <!-- Menu Bar -->
+        <div class="menu-bar">
+            <div class="dropdown">
+                <div class="menu-item">File</div>
+                <div class="dropdown-content">
+                    <div class="dropdown-item" onclick="app.newDocument()">New (Ctrl+N)</div>
+                    <div class="dropdown-item" onclick="app.openDocument()">Open... (Ctrl+O)</div>
+                    <div class="dropdown-item" onclick="app.saveDocument()">Save (Ctrl+S)</div>
+                    <div class="dropdown-item" onclick="app.modules.ui.showExportDialog()">Export...</div>
+                </div>
+            </div>
+            <div class="dropdown">
+                <div class="menu-item">Edit</div>
+                <div class="dropdown-content">
+                    <div class="dropdown-item" onclick="app.undo()">Undo (Ctrl+Z)</div>
+                    <div class="dropdown-item" onclick="app.redo()">Redo (Ctrl+Y)</div>
+                </div>
+            </div>
+            <div class="dropdown">
+                <div class="menu-item">View</div>
+                <div class="dropdown-content">
+                    <div class="dropdown-item" onclick="app.modules.canvas.zoomIn()">Zoom In (Ctrl++)</div>
+                    <div class="dropdown-item" onclick="app.modules.canvas.zoomOut()">Zoom Out (Ctrl+-)</div>
+                    <div class="dropdown-item" onclick="app.modules.canvas.zoomFit()">Fit to Screen (Ctrl+0)</div>
+                </div>
+            </div>
+            <div class="dropdown">
+                <div class="menu-item">Help</div>
+                <div class="dropdown-content">
+                    <div class="dropdown-item" onclick="app.modules.ui.showHelp()">Help (F1)</div>
+                    <div class="dropdown-item" onclick="app.modules.ui.showKeyboardShortcuts()">Keyboard Shortcuts</div>
+                    <div class="dropdown-item" onclick="app.modules.ui.showAbout()">About</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Toolbar -->
+        <div class="toolbar">
+            <div class="tool-group">
+                <button class="tool-button" onclick="app.newDocument()" title="New File (Ctrl+N)">
+                    📄 New
+                </button>
+                <button class="tool-button" onclick="app.openDocument()" title="Open File (Ctrl+O)">
+                    📁 Open
+                </button>
+                <button class="tool-button" onclick="app.saveDocument()" title="Save (Ctrl+S)">
+                    💾 Save
+                </button>
+            </div>
+            
+            <div class="tool-group">
+                <button class="tool-button" onclick="app.undo()" title="Undo (Ctrl+Z)">
+                    ↩️ Undo
+                </button>
+                <button class="tool-button" onclick="app.redo()" title="Redo (Ctrl+Y)">
+                    ↪️ Redo
+                </button>
+            </div>
+            
+            <div class="tool-group">
+                <button class="tool-button active" id="selectTool" onclick="app.modules.tools.selectTool('select')" title="Selection Tool (V)">
+                    👆 Select
+                </button>
+                <button class="tool-button" id="moveTool" onclick="app.modules.tools.selectTool('move')" title="Move Tool (V)">
+                    ✋ Move
+                </button>
+                <button class="tool-button" id="cropTool" onclick="app.modules.tools.selectTool('crop')" title="Crop Tool (C)">
+                    ✂️ Crop
+                </button>
+            </div>
+            
+            <div class="tool-group">
+                <button class="tool-button" id="brushTool" onclick="app.modules.tools.selectTool('brush')" title="Brush Tool (B)">
+                    🖌️ Brush
+                </button>
+                <button class="tool-button" id="eraserTool" onclick="app.modules.tools.selectTool('eraser')" title="Eraser Tool (E)">
+                    🧽 Eraser
+                </button>
+                <button class="tool-button" id="cloneTool" onclick="app.modules.tools.selectTool('clone')" title="Clone Stamp Tool (S)">
+                    🖲️ Clone
+                </button>
+                <button class="tool-button" id="healingTool" onclick="app.modules.tools.selectTool('healing')" title="Healing Tool (J)">
+                    🩹 Healing
+                </button>
+            </div>
+            
+            <div class="tool-group">
+                <label style="font-size: 11px; margin-right: 4px;">Color:</label>
+                <input type="color" id="colorPicker" class="color-picker" value="#000000">
+            </div>
+            
+            <div class="tool-group">
+                <label style="font-size: 11px; margin-right: 4px;">Size:</label>
+                <input type="range" id="sizeSlider" class="slider" min="1" max="100" value="5">
+                <span id="sizeValue" style="font-size: 11px; min-width: 20px;">5</span>
+            </div>
+            
+            <div class="tool-group">
+                <label style="font-size: 11px; margin-right: 4px;">Opacity:</label>
+                <input type="range" id="opacitySlider" class="slider" min="1" max="100" value="100">
+                <span id="opacityValue" style="font-size: 11px; min-width: 30px;">100%</span>
+            </div>
+            
+            <div class="tool-group">
+                <label style="font-size: 11px; margin-right: 4px;">Flow:</label>
+                <input type="range" id="flowSlider" class="slider" min="1" max="100" value="100">
+                <span id="flowValue" style="font-size: 11px; min-width: 30px;">100%</span>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="main-content">
+            <!-- Sidebar -->
+            <div class="sidebar">
+                <div class="sidebar-section">
+                    <div class="sidebar-header" onclick="app.modules.ui.togglePanel('layers')">
+                        Layers
+                        <span id="layers-toggle">▼</span>
+                    </div>
+                    <div class="sidebar-content" id="layers-content">
+                        <!-- Layers will be populated by JavaScript -->
+                    </div>
+                    <div style="padding: 8px; border-top: 1px solid var(--border-color);">
+                        <button class="btn" onclick="app.modules.layers.createNewLayer()" style="width: 100%; margin-bottom: 4px;">➕ New Layer</button>
+                        <button class="btn" onclick="app.modules.layers.duplicateLayer()" style="width: 100%; margin-bottom: 4px;">📋 Duplicate</button>
+                        <button class="btn" onclick="app.modules.layers.deleteLayer()" style="width: 100%;">🗑️ Delete</button>
+                    </div>
+                </div>
+                
+                <div class="sidebar-section">
+                    <div class="sidebar-header" onclick="app.modules.ui.togglePanel('properties')">
+                        Properties
+                        <span id="properties-toggle">▼</span>
+                    </div>
+                    <div class="sidebar-content" id="properties-content">
+                        <div class="form-group">
+                            <label class="form-label">Opacity</label>
+                            <input type="range" class="slider" min="0" max="100" value="100">
+                            <span id="layerOpacityValue">100%</span>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Blend Mode</label>
+                            <select class="form-control">
+                                <option value="normal">Normal</option>
+                                <option value="multiply">Multiply</option>
+                                <option value="screen">Screen</option>
+                                <option value="overlay">Overlay</option>
+                                <option value="soft-light">Soft Light</option>
+                                <option value="hard-light">Hard Light</option>
+                                <option value="color-dodge">Color Dodge</option>
+                                <option value="color-burn">Color Burn</option>
+                                <option value="darken">Darken</option>
+                                <option value="lighten">Lighten</option>
+                                <option value="difference">Difference</option>
+                                <option value="exclusion">Exclusion</option>
+                                <option value="hue">Hue</option>
+                                <option value="saturation">Saturation</option>
+                                <option value="color">Color</option>
+                                <option value="luminosity">Luminosity</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="sidebar-section">
+                    <div class="sidebar-header" onclick="app.modules.ui.togglePanel('history')">
+                        History
+                        <span id="history-toggle">▼</span>
+                    </div>
+                    <div class="sidebar-content" id="history-content">
+                        <!-- History will be populated by JavaScript -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Canvas Area -->
+            <div class="canvas-container">
+                <div class="canvas-toolbar">
+                    <span>Tool: <span id="currentTool">Select</span></span>
+                    <span>Position: <span id="mousePosition">0, 0</span></span>
+                    <span>Zoom: <span id="zoomLevel">100%</span></span>
+                    <span>Size: <span id="toolSize">5px</span></span>
+                </div>
+                <canvas id="canvas" class="canvas" width="800" height="600"></canvas>
+            </div>
+        </div>
+
+        <!-- Status Bar -->
+        <div class="status-bar">
+            <div class="status-item">
+                <span>Ready</span>
+            </div>
+            <div class="status-item">
+                <span>Document: 800x600px</span>
+            </div>
+            <div class="status-item">
+                <span>Memory: 2.3MB</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Notification -->
+    <div class="notification" id="notification"></div>
+
+    <!-- Load Modules -->
+    <script src="photoshop-core.js"></script>
+    <script src="photoshop-canvas.js"></script>
+    <script src="photoshop-tools.js"></script>
+    <script src="photoshop-layers.js"></script>
+    <script src="photoshop-history.js"></script>
+    <script src="photoshop-ui.js"></script>
+
+    <script>
+        // Initialize the application
+        let app;
+        
+        document.addEventListener('DOMContentLoaded', function() {
+            app = new PhotoshopCore();
+            window.app = app; // Make globally accessible
+            
+            // Show welcome notification
+            app.modules.ui.showNotification('Modular Photoshop Application loaded successfully!', 'success');
+        });
+    </script>
+</body>
+</html> 

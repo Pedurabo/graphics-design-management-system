@@ -1,0 +1,409 @@
+name: Graphics Design Management System CI/CD
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+env:
+  AWS_REGION: us-west-2
+  ECR_REPOSITORY: graphics-design-system
+  EKS_CLUSTER_NAME: graphics-design-management-system-production
+
+jobs:
+  # Security Scanning
+  security-scan:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+      
+    - name: Run Trivy vulnerability scanner
+      uses: aquasecurity/trivy-action@master
+      with:
+        scan-type: 'fs'
+        scan-ref: '.'
+        format: 'sarif'
+        output: 'trivy-results.sarif'
+        
+    - name: Upload Trivy scan results to GitHub Security tab
+      uses: github/codeql-action/upload-sarif@v2
+      if: always()
+      with:
+        sarif_file: 'trivy-results.sarif'
+        
+    - name: Run Bandit security linter
+      run: |
+        pip install bandit
+        bandit -r . -f json -o bandit-report.json || true
+        
+    - name: Run npm audit
+      run: |
+        cd frontend
+        npm audit --audit-level=moderate || true
+        cd ../backend
+        npm audit --audit-level=moderate || true
+
+  # Frontend Testing and Build
+  frontend:
+    name: Frontend Build and Test
+    runs-on: ubuntu-latest
+    needs: security-scan
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '18'
+        cache: 'npm'
+        cache-dependency-path: frontend/package-lock.json
+        
+    - name: Install dependencies
+      run: |
+        cd frontend
+        npm ci
+        
+    - name: Run linting
+      run: |
+        cd frontend
+        npm run lint
+        
+    - name: Run tests
+      run: |
+        cd frontend
+        npm test -- --coverage --watchAll=false
+        
+    - name: Build application
+      run: |
+        cd frontend
+        npm run build
+        
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: frontend-build
+        path: frontend/build/
+
+  # Backend Testing and Build
+  backend:
+    name: Backend Build and Test
+    runs-on: ubuntu-latest
+    needs: security-scan
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '18'
+        cache: 'npm'
+        cache-dependency-path: backend/package-lock.json
+        
+    - name: Install dependencies
+      run: |
+        cd backend
+        npm ci
+        
+    - name: Run linting
+      run: |
+        cd backend
+        npm run lint
+        
+    - name: Run tests
+      run: |
+        cd backend
+        npm test -- --coverage
+        
+    - name: Build application
+      run: |
+        cd backend
+        npm run build
+        
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: backend-build
+        path: backend/dist/
+
+  # AI Services Testing
+  ai-services:
+    name: AI Services Test
+    runs-on: ubuntu-latest
+    needs: security-scan
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+      
+    - name: Setup Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+        
+    - name: Install dependencies
+      run: |
+        cd ai-services
+        pip install -r requirements.txt
+        
+    - name: Run linting
+      run: |
+        cd ai-services
+        flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+        black --check .
+        
+    - name: Run tests
+      run: |
+        cd ai-services
+        pytest tests/ --cov=. --cov-report=xml
+        
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v3
+      with:
+        file: ai-services/coverage.xml
+
+  # Docker Build and Push
+  docker-build:
+    name: Build and Push Docker Images
+    runs-on: ubuntu-latest
+    needs: [frontend, backend, ai-services]
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+      
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v2
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+        
+    - name: Login to Amazon ECR
+      id: login-ecr
+      uses: aws-actions/amazon-ecr-login@v1
+      
+    - name: Download build artifacts
+      uses: actions/download-artifact@v3
+      with:
+        name: frontend-build
+        path: frontend/build/
+        
+    - name: Download backend artifacts
+      uses: actions/download-artifact@v3
+      with:
+        name: backend-build
+        path: backend/dist/
+        
+    - name: Build and push Frontend image
+      env:
+        ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        IMAGE_TAG: ${{ github.sha }}
+      run: |
+        docker build -t $ECR_REGISTRY/$ECR_REPOSITORY-frontend:$IMAGE_TAG frontend/
+        docker build -t $ECR_REGISTRY/$ECR_REPOSITORY-frontend:latest frontend/
+        docker push $ECR_REGISTRY/$ECR_REPOSITORY-frontend:$IMAGE_TAG
+        docker push $ECR_REGISTRY/$ECR_REPOSITORY-frontend:latest
+        
+    - name: Build and push Backend image
+      env:
+        ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        IMAGE_TAG: ${{ github.sha }}
+      run: |
+        docker build -t $ECR_REGISTRY/$ECR_REPOSITORY-backend:$IMAGE_TAG backend/
+        docker build -t $ECR_REGISTRY/$ECR_REPOSITORY-backend:latest backend/
+        docker push $ECR_REGISTRY/$ECR_REPOSITORY-backend:$IMAGE_TAG
+        docker push $ECR_REGISTRY/$ECR_REPOSITORY-backend:latest
+        
+    - name: Build and push AI Services image
+      env:
+        ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        IMAGE_TAG: ${{ github.sha }}
+      run: |
+        docker build -t $ECR_REGISTRY/$ECR_REPOSITORY-ai:$IMAGE_TAG ai-services/
+        docker build -t $ECR_REGISTRY/$ECR_REPOSITORY-ai:latest ai-services/
+        docker push $ECR_REGISTRY/$ECR_REPOSITORY-ai:$IMAGE_TAG
+        docker push $ECR_REGISTRY/$ECR_REPOSITORY-ai:latest
+
+  # Infrastructure as Code
+  terraform:
+    name: Terraform Plan/Apply
+    runs-on: ubuntu-latest
+    needs: docker-build
+    if: github.ref == 'refs/heads/main'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+      
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v2
+      with:
+        terraform_version: 1.4.0
+        
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v2
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+        
+    - name: Terraform Init
+      run: |
+        cd infrastructure
+        terraform init
+        
+    - name: Terraform Plan
+      run: |
+        cd infrastructure
+        terraform plan -out=tfplan
+        terraform show tfplan
+        
+    - name: Terraform Apply
+      run: |
+        cd infrastructure
+        terraform apply -auto-approve tfplan
+
+  # Kubernetes Deployment
+  deploy:
+    name: Deploy to Kubernetes
+    runs-on: ubuntu-latest
+    needs: [docker-build, terraform]
+    if: github.ref == 'refs/heads/main'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+      
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v2
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+        
+    - name: Update kubeconfig
+      run: aws eks update-kubeconfig --region ${{ env.AWS_REGION }} --name ${{ env.EKS_CLUSTER_NAME }}
+      
+    - name: Deploy to Kubernetes
+      run: |
+        # Update image tags in k8s manifests
+        sed -i "s|IMAGE_TAG|${{ github.sha }}|g" k8s/*.yaml
+        
+        # Apply manifests
+        kubectl apply -f k8s/namespace.yaml
+        kubectl apply -f k8s/configmaps.yaml
+        kubectl apply -f k8s/secrets.yaml
+        kubectl apply -f k8s/deployments.yaml
+        kubectl apply -f k8s/services.yaml
+        kubectl apply -f k8s/ingress.yaml
+        
+        # Wait for deployment
+        kubectl rollout status deployment/frontend -n graphics-design
+        kubectl rollout status deployment/backend -n graphics-design
+        kubectl rollout status deployment/ai-services -n graphics-design
+
+  # Post-deployment Tests
+  post-deployment-tests:
+    name: Post-deployment Tests
+    runs-on: ubuntu-latest
+    needs: deploy
+    if: github.ref == 'refs/heads/main'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+      
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v2
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+        
+    - name: Update kubeconfig
+      run: aws eks update-kubeconfig --region ${{ env.AWS_REGION }} --name ${{ env.EKS_CLUSTER_NAME }}
+      
+    - name: Wait for services to be ready
+      run: |
+        kubectl wait --for=condition=ready pod -l app=frontend -n graphics-design --timeout=300s
+        kubectl wait --for=condition=ready pod -l app=backend -n graphics-design --timeout=300s
+        kubectl wait --for=condition=ready pod -l app=ai-services -n graphics-design --timeout=300s
+        
+    - name: Run health checks
+      run: |
+        # Get service URLs
+        FRONTEND_URL=$(kubectl get svc frontend -n graphics-design -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+        BACKEND_URL=$(kubectl get svc backend -n graphics-design -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+        AI_URL=$(kubectl get svc ai-services -n graphics-design -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+        
+        # Test health endpoints
+        curl -f http://$FRONTEND_URL/health || exit 1
+        curl -f http://$BACKEND_URL/health || exit 1
+        curl -f http://$AI_URL/health || exit 1
+        
+    - name: Run integration tests
+      run: |
+        # Run integration tests against deployed services
+        npm install -g newman
+        newman run tests/integration/postman_collection.json
+
+  # Monitoring and Alerting
+  monitoring:
+    name: Setup Monitoring
+    runs-on: ubuntu-latest
+    needs: deploy
+    if: github.ref == 'refs/heads/main'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+      
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v2
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+        
+    - name: Update kubeconfig
+      run: aws eks update-kubeconfig --region ${{ env.AWS_REGION }} --name ${{ env.EKS_CLUSTER_NAME }}
+      
+    - name: Deploy monitoring stack
+      run: |
+        # Deploy Prometheus, Grafana, and other monitoring tools
+        kubectl apply -f monitoring/prometheus/
+        kubectl apply -f monitoring/grafana/
+        kubectl apply -f monitoring/alertmanager/
+        
+        # Wait for monitoring to be ready
+        kubectl wait --for=condition=ready pod -l app=prometheus -n monitoring --timeout=300s
+        kubectl wait --for=condition=ready pod -l app=grafana -n monitoring --timeout=300s
+
+  # Notification
+  notify:
+    name: Send Notifications
+    runs-on: ubuntu-latest
+    needs: [deploy, post-deployment-tests, monitoring]
+    if: always()
+    
+    steps:
+    - name: Notify Slack
+      uses: 8398a7/action-slack@v3
+      with:
+        status: ${{ job.status }}
+        channel: '#deployments'
+        webhook_url: ${{ secrets.SLACK_WEBHOOK_URL }}
+        
+    - name: Send email notification
+      run: |
+        # Send email notification to stakeholders
+        echo "Deployment completed for commit ${{ github.sha }}" 

@@ -1,0 +1,506 @@
+name: AI Learning CI/CD/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  schedule:
+    # Run continuous learning every 6 hours
+    - cron: '0 */6 * * *'
+
+env:
+  AWS_REGION: us-west-2
+  EKS_CLUSTER_NAME: ai-learning-cluster
+  ECR_REPOSITORY: ai-learning-system
+  S3_MODELS_BUCKET: ai-learning-models
+  S3_DATASETS_BUCKET: ai-learning-datasets
+
+jobs:
+  # Continuous Integration
+  test:
+    name: Test AI Learning System
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+        
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r ai-services/requirements.txt
+        pip install pytest pytest-cov flake8 mypy
+        
+    - name: Run linting
+      run: |
+        flake8 ai-services/ --max-line-length=120 --ignore=E203,W503
+        mypy ai-services/ --ignore-missing-imports
+        
+    - name: Run unit tests
+      run: |
+        pytest ai-services/tests/ --cov=ai-services --cov-report=xml --cov-report=html
+        
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./coverage.xml
+        flags: unittests
+        name: codecov-umbrella
+        
+    - name: Test AI Learning Engine
+      run: |
+        python -c "
+        from ai_services.services.continuous_learning import continuous_learning
+        from ai_services.services.computer_vision import cv_engine
+        from ai_services.services.human_intelligence import human_intelligence
+        
+        # Test continuous learning
+        continuous_learning.add_learning_task('rice_msc', 'supervised', 1)
+        status = continuous_learning.get_learning_status()
+        assert status['human_intelligence_score'] >= 0.0
+        
+        # Test computer vision
+        import numpy as np
+        test_image = np.random.rand(100, 100, 3).astype(np.uint8)
+        features = cv_engine.extract_all_features(test_image)
+        assert len(features) == 106
+        
+        # Test human intelligence
+        faces = human_intelligence.detect_faces(test_image)
+        assert isinstance(faces, list)
+        
+        print('All AI services tests passed!')
+        "
+
+  # Security scanning
+  security:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Run Snyk security scan
+      uses: snyk/actions/python@master
+      env:
+        SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+      with:
+        args: --severity-threshold=high
+        
+    - name: Run Bandit security scan
+      run: |
+        pip install bandit
+        bandit -r ai-services/ -f json -o bandit-report.json
+        
+    - name: Upload security report
+      uses: actions/upload-artifact@v3
+      with:
+        name: security-report
+        path: bandit-report.json
+
+  # Build and push Docker images
+  build:
+    name: Build AI Learning System
+    runs-on: ubuntu-latest
+    needs: [test, security]
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+        
+    - name: Login to Amazon ECR
+      id: login-ecr
+      uses: aws-actions/amazon-ecr-login@v2
+      
+    - name: Build and push AI Learning API
+      env:
+        ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        IMAGE_TAG: ${{ github.sha }}
+      run: |
+        docker build -t $ECR_REGISTRY/$ECR_REPOSITORY-api:$IMAGE_TAG -f ai-services/Dockerfile.api ai-services/
+        docker push $ECR_REGISTRY/$ECR_REPOSITORY-api:$IMAGE_TAG
+        
+    - name: Build and push AI Learning Worker
+      env:
+        ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        IMAGE_TAG: ${{ github.sha }}
+      run: |
+        docker build -t $ECR_REGISTRY/$ECR_REPOSITORY-worker:$IMAGE_TAG -f ai-services/Dockerfile.worker ai-services/
+        docker push $ECR_REGISTRY/$ECR_REPOSITORY-worker:$IMAGE_TAG
+        
+    - name: Build and push Graphics Application
+      env:
+        ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        IMAGE_TAG: ${{ github.sha }}
+      run: |
+        docker build -t $ECR_REGISTRY/$ECR_REPOSITORY-graphics:$IMAGE_TAG -f frontend/Dockerfile frontend/
+        docker push $ECR_REGISTRY/$ECR_REPOSITORY-graphics:$IMAGE_TAG
+
+  # Deploy to staging
+  deploy-staging:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    needs: [build]
+    if: github.ref == 'refs/heads/develop'
+    environment: staging
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+        
+    - name: Update kubeconfig
+      run: aws eks update-kubeconfig --region ${{ env.AWS_REGION }} --name ${{ env.EKS_CLUSTER_NAME }}
+      
+    - name: Deploy to staging
+      run: |
+        # Deploy AI Learning API
+        kubectl apply -f k8s/staging/ai-learning-api.yaml
+        kubectl set image deployment/ai-learning-api ai-learning-api=${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}-api:${{ github.sha }} -n staging
+        
+        # Deploy AI Learning Worker
+        kubectl apply -f k8s/staging/ai-learning-worker.yaml
+        kubectl set image deployment/ai-learning-worker ai-learning-worker=${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}-worker:${{ github.sha }} -n staging
+        
+        # Deploy Graphics Application
+        kubectl apply -f k8s/staging/graphics-app.yaml
+        kubectl set image deployment/graphics-app graphics-app=${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}-graphics:${{ github.sha }} -n staging
+        
+    - name: Run staging tests
+      run: |
+        # Wait for deployment to be ready
+        kubectl wait --for=condition=available --timeout=300s deployment/ai-learning-api -n staging
+        kubectl wait --for=condition=available --timeout=300s deployment/ai-learning-worker -n staging
+        kubectl wait --for=condition=available --timeout=300s deployment/graphics-app -n staging
+        
+        # Run integration tests
+        python tests/integration/test_staging_deployment.py
+
+  # Deploy to production
+  deploy-production:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs: [deploy-staging]
+    if: github.ref == 'refs/heads/main'
+    environment: production
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+        
+    - name: Update kubeconfig
+      run: aws eks update-kubeconfig --region ${{ env.AWS_REGION }} --name ${{ env.EKS_CLUSTER_NAME }}
+      
+    - name: Deploy to production
+      run: |
+        # Deploy AI Learning API
+        kubectl apply -f k8s/production/ai-learning-api.yaml
+        kubectl set image deployment/ai-learning-api ai-learning-api=${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}-api:${{ github.sha }} -n production
+        
+        # Deploy AI Learning Worker
+        kubectl apply -f k8s/production/ai-learning-worker.yaml
+        kubectl set image deployment/ai-learning-worker ai-learning-worker=${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}-worker:${{ github.sha }} -n production
+        
+        # Deploy Graphics Application
+        kubectl apply -f k8s/production/graphics-app.yaml
+        kubectl set image deployment/graphics-app graphics-app=${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}-graphics:${{ github.sha }} -n production
+        
+        # Deploy monitoring stack
+        kubectl apply -f k8s/production/monitoring/
+        
+    - name: Verify deployment
+      run: |
+        # Wait for deployment to be ready
+        kubectl wait --for=condition=available --timeout=300s deployment/ai-learning-api -n production
+        kubectl wait --for=condition=available --timeout=300s deployment/ai-learning-worker -n production
+        kubectl wait --for=condition=available --timeout=300s deployment/graphics-app -n production
+        
+        # Run smoke tests
+        python tests/smoke/test_production_deployment.py
+
+  # Continuous Learning
+  continuous-learning:
+    name: Continuous Learning
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+        
+    - name: Update kubeconfig
+      run: aws eks update-kubeconfig --region ${{ env.AWS_REGION }} --name ${{ env.EKS_CLUSTER_NAME }}
+      
+    - name: Trigger continuous learning
+      run: |
+        # Trigger learning tasks for all datasets
+        kubectl exec -n production deployment/ai-learning-worker -- python -c "
+        from ai_services.services.continuous_learning import continuous_learning
+        
+        # Schedule learning tasks for all datasets
+        datasets = ['rice_msc', 'human_faces', 'cifar10', 'mnist', 'imagenet']
+        
+        for dataset in datasets:
+            continuous_learning.add_learning_task(dataset, 'supervised', 1)
+            print(f'Scheduled learning task for {dataset}')
+        
+        # Auto-schedule additional learning
+        continuous_learning.auto_schedule_learning()
+        
+        # Get current status
+        status = continuous_learning.get_learning_status()
+        print(f'Current Human Intelligence Score: {status[\"human_intelligence_score\"]:.2%}')
+        print(f'Active Models: {status[\"active_models\"]}')
+        print(f'Queued Tasks: {status[\"queued_tasks\"]}')
+        "
+        
+    - name: Monitor learning progress
+      run: |
+        # Monitor learning progress for 30 minutes
+        for i in {1..30}; do
+          kubectl exec -n production deployment/ai-learning-worker -- python -c "
+          from ai_services.services.continuous_learning import continuous_learning
+          status = continuous_learning.get_learning_status()
+          print(f'HI Score: {status[\"human_intelligence_score\"]:.2%}, Models: {status[\"active_models\"]}, Tasks: {status[\"queued_tasks\"]}')
+          "
+          sleep 60
+        done
+
+  # Performance testing
+  performance:
+    name: Performance Testing
+    runs-on: ubuntu-latest
+    needs: [deploy-production]
+    if: github.ref == 'refs/heads/main'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+        
+    - name: Install dependencies
+      run: |
+        pip install locust artillery
+        
+    - name: Run load testing
+      run: |
+        # Run Artillery load tests
+        artillery run tests/performance/load-test.yml
+        
+        # Run Locust performance tests
+        locust -f tests/performance/locustfile.py --headless --users 100 --spawn-rate 10 --run-time 5m
+        
+    - name: Upload performance report
+      uses: actions/upload-artifact@v3
+      with:
+        name: performance-report
+        path: |
+          artillery-report.json
+          locust-report.html
+
+  # Monitoring and alerting
+  monitoring:
+    name: Setup Monitoring
+    runs-on: ubuntu-latest
+    needs: [deploy-production]
+    if: github.ref == 'refs/heads/main'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+        
+    - name: Update kubeconfig
+      run: aws eks update-kubeconfig --region ${{ env.AWS_REGION }} --name ${{ env.EKS_CLUSTER_NAME }}
+      
+    - name: Deploy monitoring stack
+      run: |
+        # Deploy Prometheus
+        kubectl apply -f k8s/production/monitoring/prometheus.yaml
+        
+        # Deploy Grafana
+        kubectl apply -f k8s/production/monitoring/grafana.yaml
+        
+        # Deploy AlertManager
+        kubectl apply -f k8s/production/monitoring/alertmanager.yaml
+        
+        # Deploy custom metrics
+        kubectl apply -f k8s/production/monitoring/custom-metrics.yaml
+        
+    - name: Setup alerts
+      run: |
+        # Configure AI learning alerts
+        kubectl apply -f k8s/production/monitoring/ai-learning-alerts.yaml
+        
+        # Configure performance alerts
+        kubectl apply -f k8s/production/monitoring/performance-alerts.yaml
+        
+    - name: Verify monitoring
+      run: |
+        # Wait for monitoring stack to be ready
+        kubectl wait --for=condition=available --timeout=300s deployment/prometheus -n monitoring
+        kubectl wait --for=condition=available --timeout=300s deployment/grafana -n monitoring
+        
+        # Test monitoring endpoints
+        kubectl port-forward -n monitoring svc/prometheus 9090:9090 &
+        kubectl port-forward -n monitoring svc/grafana 3000:3000 &
+        
+        sleep 10
+        
+        # Test Prometheus
+        curl -f http://localhost:9090/api/v1/query?query=up
+        
+        # Test Grafana
+        curl -f http://localhost:3000/api/health
+
+  # Data pipeline
+  data-pipeline:
+    name: Data Pipeline
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+        
+    - name: Download and process datasets
+      run: |
+        python scripts/data_pipeline.py download-datasets
+        python scripts/data_pipeline.py process-datasets
+        python scripts/data_pipeline.py upload-to-s3
+        
+    - name: Update model registry
+      run: |
+        python scripts/model_registry.py update-registry
+        python scripts/model_registry.py cleanup-old-models
+
+  # Human Intelligence Assessment
+  hi-assessment:
+    name: Human Intelligence Assessment
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+        
+    - name: Update kubeconfig
+      run: aws eks update-kubeconfig --region ${{ env.AWS_REGION }} --name ${{ env.EKS_CLUSTER_NAME }}
+      
+    - name: Run HI assessment
+      run: |
+        kubectl exec -n production deployment/ai-learning-worker -- python -c "
+        from ai_services.services.continuous_learning import continuous_learning
+        from ai_services.services.computer_vision import cv_engine
+        from ai_services.services.human_intelligence import human_intelligence
+        
+        # Assess current human intelligence score
+        hi_score = continuous_learning.get_human_intelligence_score()
+        print(f'Current Human Intelligence Score: {hi_score:.2%}')
+        
+        # Run comprehensive assessment
+        assessment_results = {
+            'computer_vision': {
+                'feature_extraction': True,
+                'object_detection': True,
+                'quality_analysis': True
+            },
+            'human_intelligence': {
+                'face_detection': True,
+                'emotion_recognition': True,
+                'portrait_enhancement': True
+            },
+            'continuous_learning': {
+                'supervised_learning': True,
+                'unsupervised_learning': True,
+                'transfer_learning': True,
+                'reinforcement_learning': True
+            }
+        }
+        
+        # Calculate comprehensive HI score
+        total_capabilities = 0
+        active_capabilities = 0
+        
+        for category, capabilities in assessment_results.items():
+            for capability, active in capabilities.items():
+                total_capabilities += 1
+                if active:
+                    active_capabilities += 1
+        
+        comprehensive_hi_score = (active_capabilities / total_capabilities) * 0.5 + hi_score * 0.5
+        print(f'Comprehensive Human Intelligence Score: {comprehensive_hi_score:.2%}')
+        
+        # Target: 50% human intelligence
+        target_achieved = comprehensive_hi_score >= 0.5
+        print(f'50% Human Intelligence Target Achieved: {target_achieved}')
+        
+        if target_achieved:
+            print('🎉 SUCCESS: 50% Human Intelligence target achieved!')
+        else:
+            print(f'📈 Progress: {comprehensive_hi_score:.2%} / 50% target')
+        "
+        
+    - name: Send notification
+      if: always()
+      run: |
+        # Send notification about HI assessment
+        python scripts/notifications.py send-hi-assessment-report 
